@@ -1,0 +1,43 @@
+
+struct Option {
+    is_some: u8,
+    value:   u64,
+}
+
+// some - wrap a value as a present Option.
+fn some(v: u64) -> Option {
+    ret Option { is_some: 1, value: v };
+}
+
+// none - produce the absent Option. value is left zero.
+fn none() -> Option {
+    ret Option { is_some: 0, value: 0 };
+}
+
+// is_some - 1 if present, 0 if absent. Useful as the if-condition.
+fn is_some(o: Option) -> int {
+    if o.is_some == 0 { ret 0; }
+    ret 1;
+}
+
+// is_none - inverse of is_some. Symmetric naming.
+fn is_none(o: Option) -> int {
+    if o.is_some == 0 { ret 1; }
+    ret 0;
+}
+
+// unwrap - return the inner value, or raise 0xCE ("crashed because
+// empty") if the Option was None. Use if is_some { unwrap } when
+// you want to handle the absence yourself.
+fn unwrap(o: Option) -> u64 {
+    if o.is_some == 0 { raise 0xCE; }
+    ret o.value;
+}
+
+// unwrap_or - return the inner value if present, else
+// default. Branch-less from the caller's perspective; ideal for
+// supplying a sentinel ("timeout = 5000 ms by default") without a temp.
+fn unwrap_or(o: Option, default: u64) -> u64 {
+    if o.is_some == 0 { ret default; }
+    ret o.value;
+}

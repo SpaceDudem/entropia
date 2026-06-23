@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use bof;
+
+fn go(args: char*, len: int) -> void {
+    BeaconPrintf(0, "[*] Crashing...\n");
+
+    try {
+        var p: u32* = (u32*)0;
+        var v: u32 = *p;          // EXCEPTION_ACCESS_VIOLATION
+        BeaconPrintf(0, str.format("[?] should not print: {d}\n", (int)v));
+    } catch err {
+        BeaconPrintf(0, str.format("[+] caught exception 0x{x}\n", err));
+    }
+
+    BeaconPrintf(0, "[+] BOF survived - returning\n");
+    ret;
+}

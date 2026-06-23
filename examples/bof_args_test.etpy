@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_args_test.etpy - declarative argument binding via [BofArgs].
+//
+// The struct is annotated; the compiler synthesises
+// bof_parse_TestArgs(args, len, &out) that drives BeaconDataParse +
+// BeaconDataInt + BeaconDataExtract in declaration order.
+//
+// Run: bof-runner bof_args_test.obj --iarg 1234 --zarg "hello"
+
+use bof;
+
+[BofArgs]
+struct TestArgs {
+    pid:  int,
+    name: char*,
+}
+
+fn go(args: char*, len: int) -> void {
+    var a: TestArgs;
+    bof_parse_TestArgs(args, len, &a);
+    BeaconPrintf(0, str.format("pid={d} name={s}\n", a.pid, (char*)a.name));
+    ret;
+}

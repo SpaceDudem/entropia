@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// sc_manual_mem.etpy - standard shellcode test for --gc=manual.
+
+fn main() -> int {
+    var buf: u64 = mem.alloc(64);
+    if buf == 0 { ret 1; }
+    var b: u8* = (u8*)buf;
+    b[0] = (u8)0x41;
+    var first: int = (int)b[0];
+    mem.free(buf);
+    Kernel32.ExitProcess(0);
+    ret first;
+}

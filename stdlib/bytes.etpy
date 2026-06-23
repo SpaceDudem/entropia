@@ -1,0 +1,57 @@
+
+struct bytes {
+    ptr: u8*,
+    len: u64,
+}
+
+// bytes_new - heap-allocate n zero bytes and return the buffer.
+fn bytes_new(n: u64) -> bytes {
+    var p: u64 = mem.alloc(n);
+    mem.zero(p, n);
+    ret bytes { ptr: (u8*)p, len: n };
+}
+
+// bytes_wrap - wrap an externally-owned pointer + length into a
+// bytes value without copying. Useful when reading a buffer that the
+// runtime already owns (a Win32 OUT param, shared memory, etc.).
+fn bytes_wrap(p: u8*, n: u64) -> bytes {
+    ret bytes { ptr: p, len: n };
+}
+
+// bytes_len - element count (in bytes).
+fn bytes_len(b: bytes) -> u64 {
+    ret b.len;
+}
+
+// bytes_get - bounds-checked read of one byte. Raises 0xB0 if
+// i >= b.len; caller handles via try { } catch e { ... }.
+fn bytes_get(b: bytes, i: u64) -> u8 {
+    if i >= b.len { raise 0xB0; }
+    ret b.ptr[i];
+}
+
+// bytes_set - bounds-checked write of one byte. Same raise
+// semantics as bytes_get.
+fn bytes_set(b: bytes, i: u64, v: u8) -> int {
+    if i >= b.len { raise 0xB0; }
+    b.ptr[i] = v;
+    ret 0;
+}
+
+// bytes_copy - copy min bytes; returns the
+// number of bytes actually copied. No allocation, no resizing - both
+// buffers must already exist with the desired sizes.
+fn bytes_copy(dst: bytes, src: bytes) -> u64 {
+    var n: u64 = src.len;
+    if dst.len < n { n = dst.len; }
+    mem.copy(dst.ptr, src.ptr, n);
+    ret n;
+}
+
+// bytes_cmp - 0 iff a and b have identical contents (including
+// length). Non-zero otherwise. Constant-ish time within the shorter
+// length; mirrors mem.cmp semantics.
+fn bytes_cmp(a: bytes, b: bytes) -> int {
+    if a.len != b.len { ret 1; }
+    ret mem.cmp(a.ptr, b.ptr, a.len);
+}

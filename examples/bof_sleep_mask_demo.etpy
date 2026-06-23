@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_sleep_mask_demo.etpy - operator-defined sleep mask.
+//
+// Demonstrates the `stdlib/opsec/sleep_mask.etpy` interface: the
+// operator declares a `[Hook("KERNEL32$Sleep")]` function; the
+// compiler routes every `Kernel32.Sleep(...)` through it. Self-
+// recursion inside the hook calls the REAL Sleep - the hook
+// machinery's auto-bypass makes the natural `Kernel32.Sleep(...)`
+// inside the body Just Work without an infinite loop.
+//
+// Build:  entc compile example/bof_sleep_mask_demo.etpy --type=bof
+// Run:    bof-runner example/bof_sleep_mask_demo.obj
+//
+// Expected output:
+//
+//   [BOF] [+] secret = AAAAAAAAAAAAAAAA
+//   [BOF] [HOOK] sleeping 100 ms, mask key=0x5a
+//   [BOF] [HOOK] re-encrypting the scratch region
+//   [BOF] [HOOK] (real Sleep happens here)
+//   [BOF] [HOOK] decrypting
+//   [BOF] [+] secret after sleep = AAAAAAAAAAAAAAAA
+//
+
+use bof;
+use opsec_sleep_mask;
+
+// A piece of "secret" data we'll mask across the sleep. In a real mplant this would be the implant body itself (.bin contents). For the demo we keep it small + on the heap.
+static __demo_secret_size: int = 16;
+
+fn make_secret() -> u64 {
+    var p: u64 = mem.alloc(16);
+    var b: char* = (char*)p;
+    var i: int = 0;
+    while i < 16 {
+        b[i] = (u8)0x41;      // 'A'
+        i = i + 1;
+    }
+    ret p;
+}
+
+// Sleep mask. Every Kernel32.Sleep(ms) call site in the program
+// is redirected here at compile time by the [Hook] machinery.
+// The body manipulates the demo secret around a call to the real
+// Sleep (the self-recursion bypass turns the inner Kernel32.Sleep into a normal dispatch skipping this hook).
+//
+// Operators replace the body with:
+//   1. Resolve the implant's runtime base + length (operator-known)
+//   2. Encrypt with whatever cipher they want (AES / XOR)
+//   3. VirtualProtect to RW (drop execute)
+//   4. Call the real Sleep or a different sleep primitive that
+//      doesnt show up as a Sleep frame on the call stack (e.g. CreateTimerQueueTimer + NtContinue / Ekko)
+//   5. VirtualProtect to restore.
+//   6. Decrypt
+static __demo_secret_ptr: u64 = 0;
+
+[Hook("KERNEL32$Sleep")]
+fn my_sleep_mask(ms: u32) -> void {
+    BeaconPrintf(0, str.format("[HOOK] sleeping {d} ms, mask key=0x5a\n", (int)ms));
+    var key: u8 = (u8)0x5A;
+
+    // Encrypt: flip every byte with the key.
+    BeaconPrintf(0, "[HOOK] re-encrypting the scratch region\n");
+    opsec_xor_region(__demo_secret_ptr, (u64)__demo_secret_size, key);
+
+    // Call the REAL Sleep. The hook self-recursion bypass turns this into a normal Kernel32.Sleep dispatch (no infinite loop back into us)
+    BeaconPrintf(0, "[HOOK] (real Sleep happens here)\n");
+    Kernel32.Sleep(ms);
+
+    // Decrypt. XOR is involutive, same key undoes the masking.
+    BeaconPrintf(0, "[HOOK] decrypting\n");
+    opsec_xor_region(__demo_secret_ptr, (u64)__demo_secret_size, key);
+    ret;
+}
+
+fn go(args: char*, len: int) -> void {
+    __demo_secret_ptr = make_secret();
+    var as_bytes: char* = (char*)__demo_secret_ptr;
+    BeaconPrintf(0, str.format("[+] secret = {s}\n", as_bytes));
+
+    // The Sleep below goes through `my_sleep_mask` automatically the operator's code stays clean
+    Kernel32.Sleep(100);
+
+    BeaconPrintf(0, str.format("[+] secret after sleep = {s}\n", as_bytes));
+    ret;
+}

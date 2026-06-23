@@ -1,0 +1,34 @@
+[package]
+name = "entc-debug"
+version = "0.1.0"
+edition = "2021"
+description = "DAP server + in-process tracer for EntropyKit shellcode - drives VS Code's Run > Start Debugging."
+
+[[bin]]
+name = "entc-debug"
+path = "src/main.rs"
+
+[dependencies]
+# Pure-Rust x86-64 disassembler for the DAP `disassemble` request and
+# VS Code's Disassembly View. We only enable the decoder + intel-syntax
+# formatter - the gas/masm/nasm formatters add ~MB to the binary for
+# no UX gain.
+iced-x86 = { version = "1.21.0", default-features = false, features = ["decoder", "intel", "std"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Shared COFF loader - used when launch.json's `program` is a `.obj`,
+# so F5 on a BOF source file walks the same parse/map/relocate path
+# the standalone `bof-runner` uses.
+bof-loader = { path = "../bof-loader" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    # AddVectoredExceptionHandler / EXCEPTION_POINTERS are placed here, despite
+    # the misleading name (windows-sys 0.59 changed the feature grouping).
+    "Win32_System_Kernel",
+    "Win32_System_Threading",
+] }

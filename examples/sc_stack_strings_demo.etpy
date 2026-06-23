@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// sc_stack_strings_demo.etpy - verify `--opsec=stack_strings` in
+// standard shellcode mode.
+//
+//   entc compile example/sc_stack_strings_demo.etpy --opsec=stack_strings
+//   strings example/sc_stack_strings_demo.bin
+
+fn main() -> int {
+    var s1: str = "shellcode hidden marker 1\n";
+    var s2: str = "shellcode hidden marker 2\n";
+
+    ret 0;
+}

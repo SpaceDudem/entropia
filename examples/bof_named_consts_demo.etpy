@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_named_consts_demo.etpy - Win32 constants without `use_c`.
+//
+// Every #define in stdlib/win32/*.h is now auto-included on
+// every build. Magic-number arguments to Win32 calls become
+// readable names with zero ceremony.
+
+use bof;
+
+fn go(args: char*, len: int) -> void {
+    BeaconPrintf(0, str.format("PROCESS_QUERY_INFORMATION = 0x{x}\n",
+                               (int)PROCESS_QUERY_INFORMATION));
+    BeaconPrintf(0, str.format("TOKEN_DUPLICATE          = 0x{x}\n",
+                               (int)TOKEN_DUPLICATE));
+    BeaconPrintf(0, str.format("MEM_COMMIT               = 0x{x}\n",
+                               (int)MEM_COMMIT));
+    BeaconPrintf(0, str.format("PAGE_EXECUTE_READWRITE   = 0x{x}\n",
+                               (int)PAGE_EXECUTE_READWRITE));
+    ret;
+}

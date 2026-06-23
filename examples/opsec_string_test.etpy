@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+// opsec_string_test.etpy - non-UI verifier for --opsec=strings_xor.
+//
+// Build:
+//   entc compile example/opsec_string_test.etpy
+//   entc compile example/opsec_string_test.etpy --opsec=strings_xor --seed=42
+// Run:
+//   target/release/entc-debug.exe trace example/opsec_string_test.bin
+//    to  expect exit code 0x4F4B ("OK" big-endian) on success.
+
+fn main() -> int {
+    // The string literal goes into .rdata. 
+    //With --opsec=strings_xor the bytes are XOR-encrypted at build time, the decryptor runs at entry, and by the time we reach this line the string is back to plaintext. 
+    // If decryption failed, the byte we compare against below won't match O (0x4F).
+    var s: char* = (char*)"OK";
+    var b0: int = (int)s[0];
+    var b1: int = (int)s[1];
+    // Return 0x4F4B if both bytes match otherwise 0xBAD
+    if b0 == 0x4F {
+        if b1 == 0x4B {
+            ret 0x4F4B;
+        }
+    }
+    ret 0xBAD;
+}

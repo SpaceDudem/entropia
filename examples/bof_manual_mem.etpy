@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_manual_mem.etpy - verify mem.alloc / mem.free pair.
+//
+// In BOF mode this works regardless of --gc. In standard mode it requires --gc=manual.
+
+use bof;
+
+fn go(args: char*, len: int) -> void {
+    var buf: u64 = mem.alloc(64);
+    if buf == 0 {
+        BeaconPrintf(0, "[!] HeapAlloc failed\n");
+        ret;
+    }
+    var b: u8* = (u8*)buf;
+    b[0] = (u8)0x41;
+    b[63] = (u8)0x42;
+    BeaconPrintf(0, str.format("[+] alloc 64 bytes at {p}, first=0x{x} last=0x{x}\n",
+                               buf, (int)b[0], (int)b[63]));
+    mem.free(buf);
+    BeaconPrintf(0, "[+] freed\n");
+    ret;
+}

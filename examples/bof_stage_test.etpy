@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_stage_test.etpy - exercises [Stage(Init)] / [Stage(Exit)]
+// lifecycle hooks. Demonstrates the OPSEC developer API:
+//
+// The init handler runs ONCE before user code, can call Win32.
+// The exit handler runs ONCE before the entry returns, can call
+// Win32, preserves the return value.
+
+use bof;
+
+static __init_counter: int = 0;
+static __exit_counter: int = 0;
+
+[Stage(Init)]
+fn opsec_init_a() -> void {
+    __init_counter = __init_counter + 1;
+    BeaconPrintf(0, "[INIT-A] before user code\n");
+    ret;
+}
+
+[Stage(Init)]
+fn opsec_init_b() -> void {
+    __init_counter = __init_counter + 10;
+    BeaconPrintf(0, "[INIT-B] also before user code\n");
+    ret;
+}
+
+[Stage(Exit)]
+fn opsec_exit_a() -> void {
+    __exit_counter = __exit_counter + 1;
+    BeaconPrintf(0, "[EXIT-A] just before ret\n");
+    ret;
+}
+
+fn go(args: char*, len: int) -> void {
+    BeaconPrintf(0, str.format("[USER] running: init_counter={d}\n", __init_counter));
+    ret;
+}

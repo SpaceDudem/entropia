@@ -1,0 +1,12 @@
+[package]
+name = "entc-win32gen"
+version = "0.1.0"
+edition = "2021"
+description = "Generates cimport-compatible Win32 headers from Microsoft win32metadata."
+
+[[bin]]
+name = "entc-win32gen"
+path = "src/main.rs"
+
+[dependencies]
+windows-metadata = "0.60"

@@ -1,0 +1,408 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "EntropyKit",
+  "scopeName": "source.entropykit",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#attributes" },
+    { "include": "#use-c-line" },
+    { "include": "#use-line" },
+    { "include": "#fn-declaration" },
+    { "include": "#struct-declaration" },
+    { "include": "#static-declaration" },
+    { "include": "#var-declaration" },
+    { "include": "#asm-block" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#namespaced-calls" },
+    { "include": "#sizeof-expr" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" }
+  ],
+
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.entropykit",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.entropykit",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+
+    "attributes": {
+      "comment": "Function attributes: [Override(Slot)], [Hook(\"USER32$MessageBoxA\")], [NoHook], [NoHook(\"Name\")].",
+      "begin": "(\\[)\\s*([A-Z][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.section.brackets.begin.entropykit" },
+        "2": { "name": "entity.name.tag.attribute.entropykit" }
+      },
+      "end": "(\\])",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.brackets.end.entropykit" }
+      },
+      "patterns": [
+        {
+          "comment": "String-literal argument - Hook(\"NAME\") / NoHook(\"NAME\"). Allowed chars include `$` (Win32 import form), `_`, alphanumeric.",
+          "begin": "\\(\\s*(\")",
+          "beginCaptures": {
+            "1": { "name": "string.quoted.double.attribute.entropykit" }
+          },
+          "end": "(\")\\s*\\)",
+          "endCaptures": {
+            "1": { "name": "string.quoted.double.attribute.entropykit" }
+          },
+          "patterns": [
+            {
+              "name": "string.quoted.double.attribute.entropykit",
+              "match": "[^\"]+"
+            }
+          ]
+        },
+        {
+          "comment": "Identifier argument - Override(Slot).",
+          "match": "\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)",
+          "captures": {
+            "1": { "name": "variable.parameter.attribute.entropykit" }
+          }
+        }
+      ]
+    },
+
+    "use-c-line": {
+      "begin": "\\b(use_c)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.import.entropykit" }
+      },
+      "end": ";",
+      "endCaptures": {
+        "0": { "name": "punctuation.terminator.statement.entropykit" }
+      },
+      "patterns": [
+        { "include": "#strings" }
+      ]
+    },
+
+    "use-line": {
+      "comment": "`use bof;` (bareword) or `use \"path/lib.etpy\";` - both forms accepted.",
+      "begin": "\\b(use)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.import.entropykit" }
+      },
+      "end": ";",
+      "endCaptures": {
+        "0": { "name": "punctuation.terminator.statement.entropykit" }
+      },
+      "patterns": [
+        { "include": "#strings" },
+        {
+          "comment": "Bareword stdlib name - `use bof;` resolves to stdlib/bof.etpy.",
+          "name": "entity.name.namespace.entropykit",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+
+    "fn-declaration": {
+      "comment": "Both `fn name(...)` and `extern fn name(...)` - the latter declares a forward-only signature with no body.",
+      "match": "\\b(extern\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.modifier.extern.entropykit" },
+        "2": { "name": "storage.type.function.entropykit" },
+        "3": { "name": "entity.name.function.entropykit" }
+      }
+    },
+
+    "struct-declaration": {
+      "match": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.struct.entropykit" },
+        "2": { "name": "entity.name.type.struct.entropykit" }
+      }
+    },
+
+    "static-declaration": {
+      "match": "\\b(static)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.modifier.entropykit" },
+        "2": { "name": "variable.other.global.entropykit" }
+      }
+    },
+
+    "var-declaration": {
+      "match": "\\b(var)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.var.entropykit" },
+        "2": { "name": "variable.other.local.entropykit" }
+      }
+    },
+
+    "asm-block": {
+      "comment": "Inline assembly block - recognised mnemonics, registers, %symbol references, memory operands `[reg + disp]`, asm-local labels `name:`, and `db` raw-byte escape.",
+      "begin": "\\b(asm)\\b\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.asm.entropykit" },
+        "2": { "name": "punctuation.section.block.begin.entropykit" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.block.end.entropykit" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "comment": "Asm-local label declaration - `name:` on its own line.",
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+          "captures": {
+            "1": { "name": "entity.name.label.asm.entropykit" },
+            "2": { "name": "punctuation.separator.label.entropykit" }
+          }
+        },
+        {
+          "comment": "All recognised mnemonics, grouped by family:\n  control flow  - call, jmp, jcc family, ret, syscall, int3\n  data movement - mov, lea, push, pop\n  arithmetic    - add, sub, inc, dec, neg\n  logical       - xor, and, or, not\n  compare       - cmp, test\n  misc          - nop, cld, db",
+          "name": "keyword.other.asm.mnemonic.entropykit",
+          "match": "\\b(mov|lea|push|pop|add|sub|inc|dec|neg|xor|and|or|not|cmp|test|call|jmp|je|jne|jz|jnz|jl|jg|jle|jge|jb|ja|jbe|jae|ret|nop|syscall|int3|cld|db)\\b"
+        },
+        {
+          "comment": "%symbol - explicit reference to a local, parameter, static, or local function. Resolved at codegen.",
+          "match": "(%)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.entropykit" },
+            "2": { "name": "variable.other.asm-symbol.entropykit" }
+          }
+        },
+        {
+          "comment": "x86-64 general-purpose registers.",
+          "name": "variable.language.register.entropykit",
+          "match": "\\b(rax|rbx|rcx|rdx|rsi|rdi|rsp|rbp|r8|r9|r10|r11|r12|r13|r14|r15|rip|rflags)\\b"
+        },
+        {
+          "comment": "Memory operand brackets - `[ ... ]`. Inside, register names and numbers keep their normal colours.",
+          "begin": "(\\[)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.section.brackets.begin.asm.entropykit" }
+          },
+          "end": "(\\])",
+          "endCaptures": {
+            "1": { "name": "punctuation.section.brackets.end.asm.entropykit" }
+          },
+          "patterns": [
+            {
+              "match": "(%)([A-Za-z_][A-Za-z0-9_]*)",
+              "captures": {
+                "1": { "name": "punctuation.definition.variable.entropykit" },
+                "2": { "name": "variable.other.asm-symbol.entropykit" }
+              }
+            },
+            {
+              "name": "variable.language.register.entropykit",
+              "match": "\\b(rax|rbx|rcx|rdx|rsi|rdi|rsp|rbp|r8|r9|r10|r11|r12|r13|r14|r15|rip)\\b"
+            },
+            {
+              "name": "keyword.operator.asm.entropykit",
+              "match": "[+\\-*]"
+            },
+            { "include": "#numbers" }
+          ]
+        },
+        { "include": "#numbers" },
+        {
+          "comment": "Bare identifier inside asm body - falls through to either an asm-local label reference (jump target) or an implicit symbol.",
+          "name": "variable.other.asm-ident.entropykit",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "comment": "Operand separator.",
+          "name": "punctuation.separator.comma.entropykit",
+          "match": ","
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.flow.entropykit",
+          "match": "\\b(if|else|while|for|break|continue|ret|try|catch|raise)\\b"
+        },
+        {
+          "name": "keyword.control.entropykit",
+          "match": "\\b(fn|var|static|struct|use_c|use|macro|extern)\\b"
+        },
+        {
+          "name": "keyword.operator.sizeof.entropykit",
+          "match": "\\b(sizeof)\\b"
+        }
+      ]
+    },
+
+    "types": {
+      "patterns": [
+        {
+          "comment": "Built-in scalar types plus `void`/`char` introduced for BOF/Win32 interop.",
+          "name": "storage.type.primitive.entropykit",
+          "match": "\\b(int|str|wstr|bool|void|char|i8|i16|i32|i64|u8|u16|u32|u64)\\b"
+        },
+        {
+          "comment": "User-declared struct types - capitalised idents in type position (after `:`, `,`, `(`, or `->`).",
+          "match": "(?<=[:,(]\\s*|->\\s*)([A-Z][A-Za-z0-9_]*)(\\*+)?",
+          "captures": {
+            "1": { "name": "entity.name.type.entropykit" },
+            "2": { "name": "storage.modifier.pointer.entropykit" }
+          }
+        }
+      ]
+    },
+
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.entropykit",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+
+    "namespaced-calls": {
+      "patterns": [
+        {
+          "comment": "Intrinsic namespaces (mem, gc, shared, str, opsec) - always lowercase.",
+          "match": "\\b(mem|gc|shared|str|opsec)\\s*(\\.|->)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.class.intrinsic.entropykit" },
+            "2": { "name": "punctuation.accessor.entropykit" },
+            "3": { "name": "support.function.intrinsic.entropykit" }
+          }
+        },
+        {
+          "comment": "Win32 namespaced call: User32.MessageBoxA(...). Capitalised prefix = DLL.",
+          "match": "\\b([A-Z][A-Za-z0-9_]*)\\s*(\\.|->)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.class.dll.entropykit" },
+            "2": { "name": "punctuation.accessor.entropykit" },
+            "3": { "name": "support.function.win32.entropykit" }
+          }
+        },
+        {
+          "comment": "Plain field access: identifier.field (not followed by `(`).",
+          "match": "([A-Za-z_][A-Za-z0-9_]*)\\s*(\\.|->)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "variable.other.entropykit" },
+            "2": { "name": "punctuation.accessor.entropykit" },
+            "3": { "name": "variable.other.property.entropykit" }
+          }
+        },
+        {
+          "comment": "Local function call: name(...).",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.call.entropykit" }
+          }
+        }
+      ]
+    },
+
+    "sizeof-expr": {
+      "match": "\\b(sizeof)\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\*+)?\\s*\\)",
+      "captures": {
+        "1": { "name": "keyword.operator.sizeof.entropykit" },
+        "2": { "name": "entity.name.type.entropykit" },
+        "3": { "name": "storage.modifier.pointer.entropykit" }
+      }
+    },
+
+    "strings": {
+      "name": "string.quoted.double.entropykit",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.entropykit",
+          "match": "\\\\([nrt0\\\\\"'])"
+        },
+        {
+          "comment": "str.format placeholders {}, {d}, {x}, {X}, {u}, {s}, {p} and {{ / }} escapes.",
+          "name": "constant.other.placeholder.entropykit",
+          "match": "\\{\\{|\\}\\}|\\{[dxXusp]?\\}"
+        }
+      ]
+    },
+
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.entropykit",
+          "match": "\\b0[xX][0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.entropykit",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+
+    "operators": {
+      "comment": "Order matters here - match longer/more-specific operators first.",
+      "patterns": [
+        {
+          "comment": "Compound shift assigns: <<= >>=.",
+          "name": "keyword.operator.assignment.compound.entropykit",
+          "match": "(<<=|>>=)"
+        },
+        {
+          "comment": "Compound arithmetic / bitwise assigns: += -= *= /= %= &= |= ^=.",
+          "name": "keyword.operator.assignment.compound.entropykit",
+          "match": "(\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=)"
+        },
+        {
+          "name": "keyword.operator.increment.entropykit",
+          "match": "(\\+\\+|--)"
+        },
+        {
+          "name": "keyword.operator.arrow.entropykit",
+          "match": "->"
+        },
+        {
+          "comment": "Equality + relational comparisons.",
+          "name": "keyword.operator.comparison.entropykit",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "comment": "Logical operators.",
+          "name": "keyword.operator.logical.entropykit",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "comment": "Bitwise shifts - must match before single `<`/`>`.",
+          "name": "keyword.operator.bitwise.entropykit",
+          "match": "(<<|>>)"
+        },
+        {
+          "comment": "Bitwise operators (|, ^, ~). `&` and `*` are handled separately because they double as pointer ops.",
+          "name": "keyword.operator.bitwise.entropykit",
+          "match": "(\\||\\^|~)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.entropykit",
+          "match": "(\\+|-|/|%)"
+        },
+        {
+          "comment": "`&` is bitwise-AND or address-of; `*` is multiplication or pointer-deref. Position disambiguates.",
+          "name": "keyword.operator.pointer.entropykit",
+          "match": "(&|\\*)"
+        },
+        {
+          "name": "keyword.operator.assignment.entropykit",
+          "match": "="
+        }
+      ]
+    }
+  }
+}

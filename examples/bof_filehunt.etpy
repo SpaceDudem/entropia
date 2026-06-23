@@ -1,0 +1,133 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_filehunt.etpy - substring-match file hunting.
+//
+// Walks a directory via FindFirstFileA / FindNextFileA, collects
+// every entry whose name contains the operator-supplied substring
+// into a doubly-linked list, then prints all matches at the end.
+//
+// Build:  entc compile example/bof_filehunt.etpy --type=bof
+// Args:
+//   --zarg <directory>   directory to walk (e.g. C:\Users\dev)
+//   --zarg <substring>   match substring (e.g. ".kdbx")
+// Run:    bof-runner example/bof_filehunt.obj \
+//             --zarg "C:\Users\dev" \
+//             --zarg ".kdbx"
+
+use bof;
+use list;
+use_c "stdlib/win32/filesystem.h";
+
+// strlen_max(s, max) - walk the NUL-terminated string, return the length (excluding the nul). Bounded by max so a runaway pointer doesn't fault. 
+//No libc dependency.
+fn strlen_max(s: char*, max: u64) -> u64 {
+    var i: u64 = 0;
+    while i < max {
+        if s[i] == (u8)0 { ret i; }
+        i = i + 1;
+    }
+    ret max;
+}
+
+// contains - true iff needle occurs as a contiguous byte substring of haystack[0..hlen].
+// O(hlen * nlen) - fine for the path-length scale we operate on.
+fn contains(haystack: char*, hlen: u64, needle: char*, nlen: u64) -> bool {
+    if nlen == 0    { ret true; }   // empty needle matches everywhere
+    if nlen > hlen  { ret false; }
+    var i: u64 = 0;
+    while i + nlen <= hlen {
+        if mem.cmp((char*)(haystack + i), needle, nlen) == 0 {
+            ret true;
+        }
+        i = i + 1;
+    }
+    ret false;
+}
+
+// gc_strdup - allocate n + 1 bytes on the GC heap,
+// copy the source bytes in, NUL-terminate. Returns the pointer as a u64 ready to push into a List
+fn gc_strdup(src: char*, n: u64) -> u64 {
+    var dst: u64 = mem.alloc(n + 1);
+    if dst == 0 { ret 0; }
+    mem.copy((void*)dst, src, n);
+    // mem.alloc zero-inits (HEAP_ZERO_MEMORY in BOF mode), so the
+    // NUL terminator is already at position `n`. Nothing more to do.
+    ret dst;
+}
+
+fn go(args: char*, len: int) -> void {
+
+    // First z-string: directory to walk. Second: match substring.
+    // Both required; we error out cleanly if either is missing.
+    var parser: datap;
+    BeaconDataParse(&parser, args, len);
+    var dir_len: int = 0;
+    var dir: char* = BeaconDataExtract(&parser, &dir_len);
+    var needle_len: int = 0;
+    var needle: char* = BeaconDataExtract(&parser, &needle_len);
+    if dir_len == 0 || needle_len == 0 {
+        BeaconPrintf(0, "[!] usage: filehunt <directory> <substring>\n");
+        ret;
+    }
+    BeaconPrintf(0, str.format("[+] hunting in {s} for `{s}`\n", dir, needle));
+
+
+    // FindFirstFileA wants a glob. We stitch the operator's directory together with `\*` so every entry inside it surfaces. 
+    // stick to a 280-byte buffer. If the operator passes anything wider we truncate (FindFirstFileA fails gracefully if the path doesn't exist).
+    var pattern: u8[280];
+    var d_used: u64 = strlen_max(dir, 260);
+    mem.copy((char*)pattern, dir, d_used);
+    pattern[d_used    ] = (u8)0x5c;     // '\'
+    pattern[d_used + 1] = (u8)0x2a;     // '*'
+    pattern[d_used + 2] = (u8)0;        // NUL
+
+    // FindFirstFileA returns INVALID_HANDLE_VALUE (-1) on failure.
+    // FindNextFileA returns 0 (FALSE) when the iteration is done, the loop bails on the first false
+    var fd: WIN32_FIND_DATAA;
+    var h: u64 = (u64)Kernel32.FindFirstFileA((char*)pattern, &fd);
+    if h == 0xFFFFFFFFFFFFFFFF {
+        BeaconPrintf(0, str.format("[!] FindFirstFileA(`{s}`) failed\n", (char*)pattern));
+        ret;
+    }
+
+    // Match collector: every matching filename gets copied onto the GC heap and pushed into this list. list_new() from
+    // stdlib/list.etpy
+    var matches: u64 = list_new();
+    var scanned: int = 0;
+
+    var nlen_u: u64 = (u64)needle_len - 1;  // strip the nul beacon counted
+    var more: int = 1;
+    while more != 0 {
+        var fname: char* = (char*)fd.cFileName;
+        var flen: u64 = strlen_max(fname, 260);
+
+        // Skip the '.' / '..' entries
+        var skip: bool = false;
+        if flen == 1 && fname[0] == (u8)0x2e { skip = true; }
+        if flen == 2 && fname[0] == (u8)0x2e && fname[1] == (u8)0x2e { skip = true; }
+
+        if skip == false {
+            scanned = scanned + 1;
+            if contains(fname, flen, needle, nlen_u) {
+                var copy: u64 = gc_strdup(fname, flen);
+                if copy != 0 { list_push(matches, copy); }
+            }
+        }
+
+        more = Kernel32.FindNextFileA((void*)h, &fd);
+    }
+    Kernel32.FindClose((void*)h);
+
+    // Walk the list head-to-tail. 
+    // Each node's value is the pointer we kept via gc_strdup so cast it back to har* and print directly.
+    var hits: u64 = list_count(matches);
+    BeaconPrintf(0, str.format("[+] scanned {d} entries, {d} hits:\n",
+                                scanned, (int)hits));
+
+    var node: u64 = list_head(matches);
+    while node != 0 {
+        var path: char* = (char*)list_node_value(node);
+        BeaconPrintf(0, str.format("    {s}\n", path));
+        node = list_node_next(node);
+    }
+    ret;
+}

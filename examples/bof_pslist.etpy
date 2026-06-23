@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use bof;
+use_c "stdlib/win32/toolhelp.h";
+
+fn go(args: char*, len: int) -> void {
+
+    var snap: u64 = (u64)Kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if snap == 0xFFFFFFFFFFFFFFFF {
+        BeaconPrintf(0, "[!] CreateToolhelp32Snapshot failed\n");
+        ret;
+    }
+
+    var pe: PROCESSENTRY32;
+
+    pe.dwSize = (u32)sizeof(PROCESSENTRY32);
+
+    var ok: int = Kernel32.Process32First((void*)snap, &pe);
+    if ok == 0 {
+        Kernel32.CloseHandle((void*)snap);
+        BeaconPrintf(0, "[!] Process32First failed (empty snapshot)\n");
+        ret;
+    }
+
+    BeaconPrintf(0, "[+]   PID  Process\n");
+    BeaconPrintf(0, "[+] -----  -----------------------------\n");
+    var count: int = 0;
+    while ok != 0 {
+        BeaconPrintf(0, str.format("[+] {d}  {s}\n",
+                                   (int)pe.th32ProcessID,
+                                   (char*)pe.szExeFile));
+        count = count + 1;
+        ok = Kernel32.Process32Next((void*)snap, &pe);
+    }
+
+    Kernel32.CloseHandle((void*)snap);
+    BeaconPrintf(0, str.format("[+] enumerated {d} processes\n", count));
+    ret;
+}

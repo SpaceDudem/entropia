@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_cna_test.etpy - `[BofCommand]` + `[BofArgs]` end-to-end.
+//
+// Building this BOF produces both:
+//   - bof_cna_test.obj   (the BOF artifact)
+//   - bof_cna_test.cna   (Aggressor script registering the command)
+//
+// Drop both into a Cobalt Strike profile dir, restart the server,
+// and operators can run: `inject_payload 1234 "C:\path\to\payload.bin"`
+
+use bof;
+
+[BofArgs]
+struct InjectArgs {
+    pid:  int,
+    path: char*,
+}
+
+[BofCommand("inject_payload")]
+fn go(args: char*, len: int) -> void {
+    var a: InjectArgs;
+    bof_parse_InjectArgs(args, len, &a);
+    BeaconPrintf(0, str.format("[+] target pid={d} path={s}\n", a.pid, a.path));
+    ret;
+}

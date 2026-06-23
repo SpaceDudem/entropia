@@ -1,0 +1,12 @@
+[package]
+name = "bof-runner"
+version = "0.1.0"
+edition = "2021"
+description = "In-process loader / test harness for EntropyKit BOFs. Mmaps a .obj, resolves __imp_* slots, applies REL32 relocations, calls go()."
+
+[[bin]]
+name = "bof-runner"
+path = "src/main.rs"
+
+[dependencies]
+bof-loader = { path = "../bof-loader" }

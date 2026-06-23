@@ -1,0 +1,25 @@
+
+use opsec_sleep_mask;
+
+static __opsec_sleep_base: u64 = 0;
+static __opsec_sleep_size: u64 = 0;
+static __opsec_sleep_key:  u8  = (u8)0x5A;
+
+[Hook("KERNEL32$Sleep")]
+fn __opsec_sleep_hook(ms: u32) -> void {
+    var sz: u64 = __opsec_sleep_size;
+    var k:  u8  = __opsec_sleep_key;
+
+    if sz != 0 {
+        opsec_xor_region(__opsec_sleep_base, sz, k);
+    }
+
+    // Self-recursion bypass: this call goes to the real Sleep,
+    // not back into us. The hook compiler suppresses re-entry.
+    Kernel32.Sleep(ms);
+
+    if sz != 0 {
+        opsec_xor_region(__opsec_sleep_base, sz, k);
+    }
+    ret;
+}

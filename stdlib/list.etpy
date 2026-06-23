@@ -1,0 +1,179 @@
+
+struct ListNode {
+    value: u64,
+    prev:  u64,
+    next:  u64,
+}
+
+struct List {
+    head:  u64,
+    tail:  u64,
+    count: u64,
+}
+
+// Construction
+
+fn list_new() -> u64 {
+    var l: u64 = mem.alloc(sizeof(List));
+    // mem.alloc returns NULL on OOM. Memory is zero-init from the BSS heap,
+    // so head/tail/count are already 0 - nothing more to do.
+    ret l;
+}
+
+// Append / prepend
+
+fn list_push(lp: u64, value: u64) -> int {
+    if lp == 0 { ret 0; }
+    var node: u64 = mem.alloc(sizeof(ListNode));
+    if node == 0 { ret 0; }
+    ((ListNode)node).value = value;
+    ((ListNode)node).prev  = ((List)lp).tail;
+    // .next is already 0 from gc zero-init.
+
+    var old_tail: u64 = ((List)lp).tail;
+    if old_tail == 0 {
+        ((List)lp).head = node;
+    } else {
+        ((ListNode)old_tail).next = node;
+    }
+    ((List)lp).tail   = node;
+    ((List)lp).count  = ((List)lp).count + 1;
+    ret 1;
+}
+
+fn list_unshift(lp: u64, value: u64) -> int {
+    if lp == 0 { ret 0; }
+    var node: u64 = mem.alloc(sizeof(ListNode));
+    if node == 0 { ret 0; }
+    ((ListNode)node).value = value;
+    ((ListNode)node).next  = ((List)lp).head;
+    // .prev already 0.
+
+    var old_head: u64 = ((List)lp).head;
+    if old_head == 0 {
+        ((List)lp).tail = node;
+    } else {
+        ((ListNode)old_head).prev = node;
+    }
+    ((List)lp).head  = node;
+    ((List)lp).count = ((List)lp).count + 1;
+    ret 1;
+}
+
+// Remove
+
+fn list_pop(lp: u64) -> u64 {
+    if lp == 0 { ret 0; }
+    var t: u64 = ((List)lp).tail;
+    if t == 0 { ret 0; }
+    var v: u64 = ((ListNode)t).value;
+    var new_tail: u64 = ((ListNode)t).prev;
+    if new_tail == 0 {
+        ((List)lp).head = 0;
+    } else {
+        ((ListNode)new_tail).next = 0;
+    }
+    ((List)lp).tail  = new_tail;
+    ((List)lp).count = ((List)lp).count - 1;
+    // The node itself stays in the GC heap until the binary exits - bump
+    // allocator has no free. That's the price of "memory safe without
+    // careful lifetime tracking."
+    ret v;
+}
+
+fn list_shift(lp: u64) -> u64 {
+    if lp == 0 { ret 0; }
+    var h: u64 = ((List)lp).head;
+    if h == 0 { ret 0; }
+    var v: u64 = ((ListNode)h).value;
+    var new_head: u64 = ((ListNode)h).next;
+    if new_head == 0 {
+        ((List)lp).tail = 0;
+    } else {
+        ((ListNode)new_head).prev = 0;
+    }
+    ((List)lp).head  = new_head;
+    ((List)lp).count = ((List)lp).count - 1;
+    ret v;
+}
+
+fn list_clear(lp: u64) -> int {
+    if lp == 0 { ret 0; }
+    ((List)lp).head  = 0;
+    ((List)lp).tail  = 0;
+    ((List)lp).count = 0;
+    ret 1;
+}
+
+// Read / write
+
+fn list_count(lp: u64) -> u64 {
+    if lp == 0 { ret 0; }
+    ret ((List)lp).count;
+}
+
+// Walk forward from head, no bounds-check error on out-of-range - returns
+// 0 (same sentinel as "value 0"). Use list_count first if your data
+// genuinely contains 0 as a valid value.
+fn list_get(lp: u64, idx: u64) -> u64 {
+    if lp == 0 { ret 0; }
+    var n: u64 = ((List)lp).head;
+    var i: u64 = 0;
+    while n != 0 {
+        if i == idx { ret ((ListNode)n).value; }
+        n = ((ListNode)n).next;
+        i = i + 1;
+    }
+    ret 0;
+}
+
+fn list_set(lp: u64, idx: u64, value: u64) -> int {
+    if lp == 0 { ret 0; }
+    var n: u64 = ((List)lp).head;
+    var i: u64 = 0;
+    while n != 0 {
+        if i == idx {
+            ((ListNode)n).value = value;
+            ret 1;
+        }
+        n = ((ListNode)n).next;
+        i = i + 1;
+    }
+    ret 0;
+}
+
+fn list_contains(lp: u64, value: u64) -> int {
+    if lp == 0 { ret 0; }
+    var n: u64 = ((List)lp).head;
+    while n != 0 {
+        if ((ListNode)n).value == value { ret 1; }
+        n = ((ListNode)n).next;
+    }
+    ret 0;
+}
+
+
+fn list_head(lp: u64) -> u64 {
+    if lp == 0 { ret 0; }
+    ret ((List)lp).head;
+}
+
+fn list_tail(lp: u64) -> u64 {
+    if lp == 0 { ret 0; }
+    ret ((List)lp).tail;
+}
+
+fn list_node_value(np: u64) -> u64 {
+    if np == 0 { ret 0; }
+    ret ((ListNode)np).value;
+}
+
+fn list_node_next(np: u64) -> u64 {
+    if np == 0 { ret 0; }
+    ret ((ListNode)np).next;
+}
+
+fn list_node_prev(np: u64) -> u64 {
+    if np == 0 { ret 0; }
+    ret ((ListNode)np).prev;
+}

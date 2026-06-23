@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_stack_strings_demo.etpy - exercise --opsec=stack_strings.
+//
+// Without the flag: each BeaconPrintf string goes into .rdata and shows up under strings <bin> immediately.
+//
+// With the flag: short literals are rebuilt on the stack at
+// runtime via mov rax, imm64; mov [rbp+disp], rax sequences.
+// strings <bin> finds nothing recognisable in .rdata.
+//
+// Build (try both, compare with strings):
+//   entc compile example/bof_stack_strings_demo.etpy --type=bof
+//   entc compile example/bof_stack_strings_demo.etpy --type=bof --opsec=stack_strings
+//   strings example/bof_stack_strings_demo.x64.o | grep -E "hello|signature|tripwire"
+// Run:
+//   bof-runner example/bof_stack_strings_demo.x64.o
+
+use bof;
+
+fn go(args: char*, len: int) -> void {
+    BeaconPrintf(0, "hello from a stack string\n");
+    BeaconPrintf(0, "another signature line\n");
+    BeaconPrintf(0, "tripwire: this should NOT appear in .rdata\n");
+    ret;
+}

@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    ".",
+    "tools/entc-win32gen",
+    "tools/entc-debug",
+    "tools/bof-runner",
+    "tools/bof-loader",
+]
+resolver = "2"
+
+[package]
+name = "entropykit"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "entc"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true

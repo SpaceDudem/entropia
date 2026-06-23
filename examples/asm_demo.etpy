@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Function-local statics don't exist yet - we use a top-level one
+// the asm block reads + writes by name.
+static accumulator: u64 = 0;
+
+
+// Take a value through a register so callers can confirm `%a` resolved
+// to the right frame slot.
+fn identity(a: u64) -> u64 {
+    var result: u64;
+    asm {
+        mov rax, %a            // load param from its frame slot
+        mov %result, rax       // store rax into the local's slot
+    }
+    ret result;
+}
+
+// Add via inline asm using two parameters. Shows the params are
+// already spilled to the frame when the asm block runs, so `%a`
+// and `%b` work the same way as locals.
+fn asm_add(a: u64, b: u64) -> u64 {
+    var result: u64;
+    asm {
+        mov rax, %a
+        add rax, %b
+        mov %result, rax
+    }
+    ret result;
+}
+
+// Counted loop demonstrating asm-local labels + conditional jumps.
+// Sums 1..=n via plain ADDs, no host-language control flow.
+fn asm_sum_to(n: u64) -> u64 {
+    var total: u64 = 0;
+    var i:     u64 = 1;
+    asm {
+        mov rax, %total
+        mov rcx, %i
+        mov rdx, %n
+    loop_top:
+        cmp rcx, rdx
+        ja  done                // unsigned above  to  i > n, exit
+        add rax, rcx
+        inc rcx
+        jmp loop_top
+    done:
+        mov %total, rax
+    }
+    ret total;
+}
+
+// Pointer walk via memory operands. `buf` is a u64*; we sum the
+// first `n` slots via `[reg + idx*8]` indexed loads.
+fn asm_sum_array(buf: u64*, n: u64) -> u64 {
+    var total: u64 = 0;
+    asm {
+        xor rax, rax            // total
+        xor rcx, rcx            // idx
+        mov rdx, %buf
+        mov r8,  %n
+    walk:
+        cmp rcx, r8
+        jae fin
+        mov r9, [rdx + rcx*8]   // qword-indexed load
+        add rax, r9
+        inc rcx
+        jmp walk
+    fin:
+        mov %total, rax
+    }
+    ret total;
+}
+
+// Call a local fn from inline asm with arg already loaded. Result
+// comes back in rax under Win64; we drop it into a local for return.
+fn asm_call_demo(x: u64) -> u64 {
+    var got: u64;
+    asm {
+        mov rcx, %x             // load arg 0 into the Win64 slot
+        call %identity          //  to  rax = x
+        mov %got, rax
+    }
+    ret got;
+}
+
+// Mutate a static through asm. Demonstrates `%global` resolves to
+// `[rip + __static_accumulator]` and that the static survives the
+// in-asm round trip.
+fn asm_bump_static(delta: u64) -> u64 {
+    asm {
+        mov rax, %accumulator
+        add rax, %delta
+        mov %accumulator, rax
+    }
+    ret accumulator;
+}
+
+// Composition test: build a number through every flavour of inline
+// asm, then pop a MessageBox showing the result so a human can see
+// the demo ran.
+fn main() -> int {
+    var x: u64 = 0x12345678;
+    var sum_1_to_10: u64 = asm_sum_to(10);     // 55
+    var added: u64       = asm_add(x, sum_1_to_10);
+    var echoed: u64      = asm_call_demo(added);
+
+    // Sum a small inline buffer via the indexed-load helper.
+    var buf: u64[4];
+    buf[0] = 1;
+    buf[1] = 2;
+    buf[2] = 4;
+    buf[3] = 8;
+    var arr_sum: u64 = asm_sum_array((u64*)buf, 4);   // 15
+
+    // Bump the static twice to prove %global round-trips.
+    asm_bump_static(1);
+    asm_bump_static(arr_sum);   // accumulator = 16
+
+    // Compose everything into a final number, pop it as a MessageBox.
+    var final_val: u64 = echoed + accumulator;
+
+    // Format the value into a string buffer for the popup.
+    User32.MessageBoxA(0, str.format("asm demo: 0x{x}", final_val),
+                       "EntropyKit inline asm", 0);
+    ret 0;
+}

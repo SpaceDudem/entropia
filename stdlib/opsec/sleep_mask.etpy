@@ -1,0 +1,39 @@
+
+fn opsec_xor_region(addr: u64, length: u64, key: u8) -> void {
+    var p: char* = (char*)addr;
+    var i: u64 = 0;
+    while i < length {
+        p[i] = p[i] ^ key;
+        i = i + 1;
+    }
+    ret;
+}
+
+fn opsec_anchor() -> u64 {
+    var addr: u64;
+    asm {
+        lea rax, opsec_anchor
+        mov %addr, rax
+    }
+    ret addr;
+}
+
+fn opsec_set_protect(addr: u64, length: u64, new_protect: u32, old_out: u32*) -> bool {
+    var ok: int = Kernel32.VirtualProtect(
+        (void*)addr, length, new_protect, old_out);
+    if ok == 0 { ret false; }
+    ret true;
+}
+
+fn opsec_mask_region(addr: u64, length: u64, key: u8) -> bool {
+    var old: u32 = 0;
+    // PAGE_READWRITE = 0x04 - strips execute, allows write.
+    if opsec_set_protect(addr, length, 0x04, &old) == false {
+        ret false;
+    }
+    opsec_xor_region(addr, length, key);
+    var dummy: u32 = 0;
+    // Restore. old was set by the first call.
+    opsec_set_protect(addr, length, old, &dummy);
+    ret true;
+}

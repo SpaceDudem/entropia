@@ -1,0 +1,5 @@
+
+[Override(Bootstrap)]
+fn opsec_bootstrap_noop() -> int {
+    ret 0;
+}

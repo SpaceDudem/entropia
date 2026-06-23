@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_enum_demo.etpy - namespaced enums
+//
+// Name.Variant lowers to an integer literal at compile time.
+// Different enums can share variant names (Color.Red vs Severity.High vs ErrorCode.Red - all distinct).
+
+use bof;
+
+enum Severity {
+    Info  = 0,
+    Warn  = 1,
+    Error = 2,
+    Fatal = 3,
+}
+
+enum Color {
+    Red   = 0xFF0000,
+    Green = 0x00FF00,
+    Blue  = 0x0000FF,
+}
+
+// Auto-increment from previous: HKLM = 1, HKCU = 2, HKCR = 3
+enum Hive {
+    HKLM = 1,
+    HKCU,
+    HKCR,
+}
+
+fn log_line(sev: int, msg: str) -> void {
+    if sev == Severity.Info  { BeaconPrintf(0, str.format("[INFO ] {s}\n", msg)); }
+    if sev == Severity.Warn  { BeaconPrintf(0, str.format("[WARN ] {s}\n", msg)); }
+    if sev == Severity.Error { BeaconPrintf(0, str.format("[ERROR] {s}\n", msg)); }
+    if sev == Severity.Fatal { BeaconPrintf(0, str.format("[FATAL] {s}\n", msg)); }
+    ret;
+}
+
+fn go(args: char*, len: int) -> void {
+    log_line(Severity.Info,  "starting");
+    log_line(Severity.Warn,  "watch out");
+    log_line(Severity.Error, "bad happened");
+    log_line(Severity.Fatal, "give up");
+    BeaconPrintf(0, str.format("red   = 0x{x}\n", Color.Red));
+    BeaconPrintf(0, str.format("green = 0x{x}\n", Color.Green));
+    BeaconPrintf(0, str.format("HKLM  = {d}\n", Hive.HKLM));
+    BeaconPrintf(0, str.format("HKCU  = {d}\n", Hive.HKCU));
+    BeaconPrintf(0, str.format("HKCR  = {d}\n", Hive.HKCR));
+    ret;
+}

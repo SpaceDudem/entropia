@@ -1,0 +1,132 @@
+
+// Constants (CALLBACK_* values for BeaconPrintf / BeaconOutput).
+// Match beacon.h so existing BOFs can be ported verbatim.
+
+static CALLBACK_OUTPUT:          int = 0x0;
+static CALLBACK_OUTPUT_OEM:      int = 0x1e;
+static CALLBACK_OUTPUT_UTF8:     int = 0x20;
+static CALLBACK_ERROR:           int = 0x0d;
+
+
+struct datap {
+    original: char*,
+    buffer:   char*,
+    length:   int,
+    size:     int,
+}
+
+
+struct formatp {
+    original: char*,
+    buffer:   char*,
+    length:   int,
+    size:     int,
+}
+
+// Output - print / emit data back to the operator.
+
+extern fn BeaconPrintf(kind: int, fmt: str) -> void;
+extern fn BeaconOutput(kind: int, data: char*, len: int) -> void;
+
+// Input parsing - pull args out of the packed buffer Beacon hands go.
+
+extern fn BeaconDataParse(parser: datap*, buffer: char*, size: int) -> void;
+extern fn BeaconDataInt(parser: datap*) -> int;
+extern fn BeaconDataShort(parser: datap*) -> int;
+extern fn BeaconDataLength(parser: datap*) -> int;
+extern fn BeaconDataExtract(parser: datap*, size: int*) -> char*;
+
+// Format - build up an output buffer in chunks, emit all at once.
+
+extern fn BeaconFormatAlloc(format: formatp*, maxsz: int) -> void;
+extern fn BeaconFormatReset(format: formatp*) -> void;
+extern fn BeaconFormatFree(format: formatp*) -> void;
+extern fn BeaconFormatAppend(format: formatp*, text: char*, len: int) -> void;
+extern fn BeaconFormatPrintf(format: formatp*, fmt: str) -> void;
+extern fn BeaconFormatToString(format: formatp*, size: int*) -> char*;
+// Real Beacon writes the int big-endian (matches Aggressor's
+// bof_pack convention). Our local harness does the same so a BOF
+// that round-trips an int through Format/Data agrees on byte order.
+extern fn BeaconFormatInt(format: formatp*, value: int) -> void;
+
+// Token impersonation / context queries.
+
+extern fn BeaconUseToken(token: void*) -> bool;
+extern fn BeaconRevertToken() -> void;
+extern fn BeaconIsAdmin() -> bool;
+
+// Process injection helpers. Beacon owns the target-process state
+// so the BOF doesn't have to track sacrificial-process handles.
+
+extern fn BeaconGetSpawnTo(x86: bool, buffer: char*, length: int) -> void;
+extern fn BeaconInjectProcess(
+    process_handle:   void*,
+    pid:              int,
+    payload:          char*,
+    p_length:         int,
+    p_offset:         int,
+    arg:              char*,
+    a_length:         int) -> void;
+extern fn BeaconInjectTemporaryProcess(
+    process_info:     void*,
+    payload:          char*,
+    p_length:         int,
+    p_offset:         int,
+    arg:              char*,
+    a_length:         int) -> void;
+extern fn BeaconCleanupProcess(process_info: void*) -> void;
+extern fn BeaconSpawnTemporaryProcess(
+    x86:              bool,
+    ignore_token:     bool,
+    si:               void*,
+    process_info:     void*) -> bool;
+
+// Utility.
+
+extern fn toWideChar(src: char*, dst: u16*, max: int) -> bool;
+
+
+extern fn BeaconAddValue(key: char*, ptr: void*) -> bool;
+extern fn BeaconGetValue(key: char*) -> void*;
+extern fn BeaconRemoveValue(key: char*) -> bool;
+
+
+struct BEACON_INFO {
+    // The real struct has ~15 fields. We expose the size by reserving
+    // a 256-byte block; user code reads specific offsets via casts
+    // if it needs particular fields until we ship a typed wrapper.
+    raw: u8[256],
+}
+
+extern fn BeaconInformation(info: BEACON_INFO*) -> bool;
+
+// Error reporting (Cobalt Strike 4.10+).
+
+extern fn BeaconIsErrorMessage(type_: int, fmt: str) -> void;
+
+
+extern fn BeaconGetCustomUserData() -> void*;
+
+
+extern fn BeaconDataStoreGetItem(index: int) -> void*;
+extern fn BeaconDataStoreProtectItem(index: int) -> void;
+extern fn BeaconDataStoreUnprotectItem(index: int) -> void;
+
+
+extern fn BeaconGate(vftable_p: void*, indices_p: void*) -> bool;
+extern fn BeaconGateReturnValue() -> char*;
+extern fn BeaconDisableBeaconGate() -> bool;
+extern fn BeaconEnableBeaconGate() -> bool;
+
+// Current syscall obfuscation config. Struct shape is loader-private;
+// reserve 64 bytes and cast as needed.
+struct BEACON_SYSCALL_INFO {
+    raw: u8[64],
+}
+
+extern fn BeaconGetSyscallInformation(info: BEACON_SYSCALL_INFO*) -> bool;
+
+
+extern fn BeaconAddCommand(command: char*, function: void*) -> bool;
+extern fn BeaconRemoveCommand(command: char*) -> bool;
+extern fn BeaconGetCommand(command: char*) -> void*;

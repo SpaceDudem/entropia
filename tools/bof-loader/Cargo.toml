@@ -1,0 +1,16 @@
+[package]
+name = "bof-loader"
+version = "0.1.0"
+edition = "2021"
+description = "In-process COFF loader for EntropyKit BOFs. Parses .obj, maps sections, resolves __imp_* slots (Beacon stubs + Win32 imports), applies REL32 / ADDR64 relocations. Shared by `bof-runner` (CLI harness) and `entc-debug` (VS Code DAP server)."
+
+[lib]
+name = "bof_loader"
+path = "src/lib.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_LibraryLoader",
+] }

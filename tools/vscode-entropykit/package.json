@@ -1,0 +1,144 @@
+{
+  "name": "entropykit",
+  "displayName": "EntropyKit",
+  "description": "Syntax highlighting + debugger for EntropyKit (.etpy) - a red-team-first compiled language that emits position-independent Windows x86-64 shellcode AND Cobalt Strike Beacon Object Files. F5 on a .etpy auto-detects BOF vs shellcode, recompiles, and steps the execution arrow through source.",
+  "version": "0.3.1",
+  "publisher": "entropykit",
+  "engines": {
+    "vscode": "^1.50.0"
+  },
+  "categories": ["Programming Languages", "Debuggers"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "entropykit",
+        "aliases": ["EntropyKit", "entropykit"],
+        "extensions": [".etpy"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/etpy.svg",
+          "dark": "./icons/etpy.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "entropykit",
+        "scopeName": "source.entropykit",
+        "path": "./syntaxes/entropykit.tmLanguage.json"
+      }
+    ],
+    "breakpoints": [
+      { "language": "entropykit" }
+    ],
+    "debuggers": [
+      {
+        "type": "entropykit",
+        "label": "EntropyKit (Shellcode / BOF)",
+        "windows": { "program": "./bin/entc-debug.exe" },
+        "args": ["dap"],
+        "languages": ["entropykit"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to a .etpy source (recommended) OR a compiled .bin/.x64.o/.obj/.coff. When pointed at a .etpy the adapter sniffs BOF (`fn go(...)`) vs shellcode (`fn main(...)`) from the source, rebuilds, then debugs the freshly-built artifact. When pointed at a compiled artifact the adapter loads it as-is unless `build: true` is set. `${file}` (the active editor's path) is the recommended value: F5 always traces whatever .etpy is open.",
+                "default": "${file}"
+              },
+              "dbg": {
+                "type": "string",
+                "description": "Override path to the .dbg source map. Defaults to <artifact>.dbg. Rarely needed - every `entc compile --debug` writes one.",
+                "default": ""
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Pause at the first .etpy statement instead of running to a user-set breakpoint. Highly recommended - it confirms the right file was actually launched.",
+                "default": true
+              },
+              "build": {
+                "type": "boolean",
+                "description": "Force a rebuild before debugging. Implicit (and unavoidable) when `program` is a .etpy source: the adapter always rebuilds source-mode launches so the running artifact matches the editor. Only honoured for .bin/.x64.o/.obj/.coff `program` shapes.",
+                "default": false
+              },
+              "source": {
+                "type": "string",
+                "description": "Override the .etpy source path when `program` is a compiled artifact. Defaults to the .etpy that sits next to `program`. Ignored when `program` is already a .etpy.",
+                "default": ""
+              },
+              "entc": {
+                "type": "string",
+                "description": "Path to the `entc` compiler binary. If unset, the adapter walks up from the source file looking for `target/release/entc.exe` then `target/debug/entc.exe`.",
+                "default": ""
+              },
+              "args": {
+                "type": "array",
+                "description": "Arguments handed to a BOF's `go(args, len)`. Mirrors the `bof-runner` CLI: pairs of flag + value, packed in Aggressor's `bof_pack` order. Flags: `--zarg STR` (zstring), `--iarg N` (big-endian int), `--sarg N` (big-endian short), `--barg @path` (binary blob), `--args RAW` (raw bytes, no length prefix). Ignored when the source compiles to shellcode.",
+                "items": { "type": "string" },
+                "default": []
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "entropykit",
+            "request": "launch",
+            "name": "EntropyKit: trace current .etpy",
+            "program": "${file}",
+            "stopOnEntry": true
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "EntropyKit: Trace current .etpy (auto-detect)",
+            "description": "F5 the active .etpy. The adapter auto-detects BOF vs shellcode from the source (`fn go(...)` => BOF, `fn main(...)` => shellcode), rebuilds, and traces. The recommended config for almost every workflow.",
+            "body": {
+              "type": "entropykit",
+              "request": "launch",
+              "name": "EntropyKit: trace current .etpy",
+              "program": "^\"\\${file}\"",
+              "stopOnEntry": true
+            }
+          },
+          {
+            "label": "EntropyKit: Trace current .etpy (BOF with args)",
+            "description": "Same auto-detect flow, but with sample BOF args. Edit `args` to match your `go(args, len)` consumer.",
+            "body": {
+              "type": "entropykit",
+              "request": "launch",
+              "name": "EntropyKit: trace current .etpy (BOF)",
+              "program": "^\"\\${file}\"",
+              "stopOnEntry": true,
+              "args": ["--zarg", "hello"]
+            }
+          },
+          {
+            "label": "EntropyKit: Run pre-built .bin (no rebuild)",
+            "description": "Run an already-compiled .bin shellcode artifact. Skip the rebuild - useful when investigating an artifact you didn't produce locally. Artifacts default to <source-dir>/bin/.",
+            "body": {
+              "type": "entropykit",
+              "request": "launch",
+              "name": "EntropyKit: prebuilt shellcode",
+              "program": "^\"\\${fileDirname}/bin/\\${fileBasenameNoExtension}.bin\"",
+              "stopOnEntry": true
+            }
+          },
+          {
+            "label": "EntropyKit: Run pre-built .x64.o BOF (no rebuild)",
+            "description": "Run an already-compiled .x64.o BOF artifact. Skip the rebuild - useful when investigating an artifact you didn't produce locally. Artifacts default to <source-dir>/bin/.",
+            "body": {
+              "type": "entropykit",
+              "request": "launch",
+              "name": "EntropyKit: prebuilt BOF",
+              "program": "^\"\\${fileDirname}/bin/\\${fileBasenameNoExtension}.x64.o\"",
+              "stopOnEntry": true,
+              "args": ["--zarg", "hello"]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

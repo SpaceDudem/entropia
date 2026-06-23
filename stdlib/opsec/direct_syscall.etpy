@@ -1,0 +1,9 @@
+
+[Override(NtCall)]
+fn opsec_nt_syscall() -> int {
+    asm {
+        mov r10, rcx;
+        db 0x0F, 0x05;      // syscall
+        ret;
+    }
+}

@@ -1,0 +1,50 @@
+
+// Cached gadget address, populated lazily on first NtCall. Zero
+// means "not yet discovered"; the stub does a slow-path call on the
+// first invocation and a single load on every subsequent call.
+static __opsec_syscall_gadget: u64 = 0;
+
+fn __opsec_find_syscall_gadget() -> u64 {
+    var h_ntdll: void* = Kernel32.GetModuleHandleA("ntdll.dll");
+    if h_ntdll == (void*)0 { ret 0; }
+    var nt_fn: char* = (char*)Kernel32.GetProcAddress(
+        h_ntdll, "NtAllocateVirtualMemory");
+    if nt_fn == (char*)0 { ret 0; }
+    var i: int = 0;
+    while i < 32 {
+        if nt_fn[i] == (u8)0x0F {
+            if nt_fn[i + 1] == (u8)0x05 {
+                ret (u64)(nt_fn + i);
+            }
+        }
+        i = i + 1;
+    }
+    ret 0;
+}
+
+[Override(NtCall)]
+fn opsec_indirect_syscall() -> int {
+    asm {
+        mov r10, rcx
+        // Lazy-init the gadget on first call. r11 is volatile under
+        // Win64 and not used by the syscall ABI; safe to scratch.
+        mov r11, %__opsec_syscall_gadget
+        test r11, r11
+        jnz have_gadget
+        push rax
+        push r10
+        sub rsp, 0x20
+        call %__opsec_find_syscall_gadget
+        add rsp, 0x20
+        pop r10
+        mov %__opsec_syscall_gadget, rax
+        mov r11, rax
+        pop rax
+        test r11, r11
+        jnz have_gadget
+        db 0x0F, 0x05               // fallback: in-region syscall
+        ret
+    have_gadget:
+        jmp r11
+    }
+}

