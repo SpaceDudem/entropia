@@ -1916,6 +1916,7 @@ fn arm_pause(_session: &Arc<TracerSession>, _join: &thread::JoinHandle<()>) -> b
 /// shellcode paths. Same-process reads are fine because the tracer
 /// shares its address space with the DAP server (they're threads in
 /// the same process).
+#[cfg(windows)]
 unsafe fn try_read_bytes(addr: usize, out: &mut [u8]) -> usize {
     use windows_sys::Win32::System::Memory::{
         VirtualQuery, MEMORY_BASIC_INFORMATION,
@@ -1948,6 +1949,11 @@ unsafe fn try_read_bytes(addr: usize, out: &mut [u8]) -> usize {
         cursor = chunk_end;
     }
     copied
+}
+
+#[cfg(not(windows))]
+unsafe fn try_read_bytes(_addr: usize, _out: &mut [u8]) -> usize {
+    0
 }
 
 // ---------------------------------------------------------------- base64

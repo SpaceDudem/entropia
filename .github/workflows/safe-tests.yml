@@ -30,6 +30,9 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Cargo tests
+        run: cargo test --workspace
+
       - name: Safe compiler smoke tests
         run: python3 tools/safe_entropia_smoke_tests.py --release --timeout 180
 

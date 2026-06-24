@@ -878,3 +878,179 @@ fn main() -> ExitCode {
         Err(e) => { eprintln!("error: {e}"); ExitCode::FAILURE }
     }
 }
+
+#[cfg(test)]
+mod compiler_gauntlet_tests {
+    use super::*;
+    use crate::ast::{Expr, Stmt};
+    use std::path::PathBuf;
+
+    fn parse_source(src: &str) -> ast::Program {
+        let tokens = lexer::tokenize(src).expect("source should tokenize");
+        parser::Parser::new(tokens, "gauntlet.etpy")
+            .parse_program()
+            .expect("source should parse")
+    }
+
+    fn typecheck_source(src: &str) -> Result<(), Vec<String>> {
+        let prog = parse_source(src);
+        typecheck::check(&prog)
+    }
+
+    fn test_source_path(name: &str) -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("target");
+        path.push("entropia-rust-gauntlet");
+        path.push(format!("{}-{}", std::process::id(), name));
+        std::fs::create_dir_all(&path).expect("test output directory should be created");
+        path.push(format!("{name}.etpy"));
+        path
+    }
+
+    fn compile_test_source(
+        name: &str,
+        src: &str,
+        kind: codegen::BuildKind,
+    ) -> codegen::CompiledBlob {
+        let path = test_source_path(name);
+        std::fs::write(&path, src).expect("test source should be written");
+        compile(
+            path.to_str().expect("test source path should be utf-8"),
+            codegen::GcMode::Auto,
+            kind,
+            polymorphism::OpsecConfig::default(),
+        )
+        .expect("test source should compile")
+    }
+
+    #[test]
+    fn crimson_cloak_parses_core_language_shapes() {
+        let prog = parse_source(
+            r#"
+fn main() -> int {
+    var a: int = 1;
+    var b: int = a + 41;
+    var p: char* = "ok";
+    while b > 0 {
+        if b == 42 {
+            ret b;
+        }
+        b = b - 1;
+    }
+    ret 0;
+}
+"#,
+        );
+
+        assert_eq!(prog.functions.len(), 1);
+        let main = &prog.functions[0];
+        assert_eq!(main.name, "main");
+        assert_eq!(main.ret_ty, "int");
+        assert!(main.body.iter().any(|stmt| matches!(
+            stmt,
+            Stmt::Var { name, ty, value: Some(Expr::Int(1)), .. }
+                if name == "a" && ty == "int"
+        )));
+        assert!(main.body.iter().any(|stmt| matches!(
+            stmt,
+            Stmt::Var { name, ty, value: Some(Expr::Binary { op, .. }), .. }
+                if name == "b" && ty == "int" && op == "+"
+        )));
+        assert!(main.body.iter().any(|stmt| matches!(
+            stmt,
+            Stmt::Var { name, ty, value: Some(Expr::Str(_)), .. }
+                if name == "p" && ty == "u8*"
+        )));
+        assert!(main.body.iter().any(|stmt| matches!(stmt, Stmt::While { .. })));
+    }
+
+    #[test]
+    fn grey_hat_accepts_int_return_from_int_function() {
+        typecheck_source(
+            r#"
+fn main() -> int {
+    var a: int = 40;
+    var b: int = 2;
+    ret a + b;
+}
+"#,
+        )
+        .expect("int function returning int expression should typecheck");
+    }
+
+    #[test]
+    fn grey_hat_rejects_incompatible_assignment() {
+        let errs = typecheck_source(
+            r#"
+fn main() -> int {
+    var a: int = "bad";
+    ret 0;
+}
+"#,
+        )
+        .expect_err("string literal assigned to int should fail typecheck");
+
+        assert!(
+            errs.iter().any(|e| e.contains("error[T003]") && e.contains("var `a`")),
+            "expected T003 var assignment diagnostic, got: {errs:#?}"
+        );
+    }
+
+    #[test]
+    fn grey_hat_reports_undeclared_variables_without_panicking() {
+        let result = std::panic::catch_unwind(|| {
+            typecheck_source(
+                r#"
+fn main() -> int {
+    ret missing_name;
+}
+"#,
+            )
+        });
+
+        let errs = result
+            .expect("undeclared variable should be reported, not panic")
+            .expect_err("undeclared variable should fail typecheck");
+        assert!(
+            errs.iter().any(|e| e.contains("error[T012]") && e.contains("missing_name")),
+            "expected T012 undeclared variable diagnostic, got: {errs:#?}"
+        );
+    }
+
+    #[test]
+    fn iron_forge_codegen_emits_non_empty_raw_shellcode_blob() {
+        let blob = compile_test_source(
+            "shellcode_blob",
+            r#"
+fn main() -> int {
+    var a: int = 40;
+    var b: int = 2;
+    ret a + b;
+}
+"#,
+            codegen::BuildKind::Standard,
+        );
+
+        assert!(!blob.code.is_empty(), "shellcode blob should not be empty");
+        assert_ne!(&blob.code[..blob.code.len().min(2)], b"MZ", "shellcode should be raw, not PE");
+    }
+
+    #[test]
+    fn iron_forge_codegen_emits_x64_coff_for_bof() {
+        let blob = compile_test_source(
+            "bof_object",
+            r#"
+fn go(args: char*, len: int) -> void {
+    ret;
+}
+"#,
+            codegen::BuildKind::Bof,
+        );
+
+        assert!(blob.code.len() >= 20, "COFF object should include a file header");
+        let machine = u16::from_le_bytes([blob.code[0], blob.code[1]]);
+        let sections = u16::from_le_bytes([blob.code[2], blob.code[3]]);
+        assert_eq!(machine, coff::IMAGE_FILE_MACHINE_AMD64);
+        assert!(sections >= 1, "COFF object should include at least one section");
+    }
+}

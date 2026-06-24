@@ -5,12 +5,14 @@
 //! byte sequence the BOF will see in its `args` buffer. The flag
 //! vocabulary matches the `bof-runner` CLI:
 //!
-//!     --args RAW    raw bytes, no length prefix. For BOFs that
-//!                   treat `args` as a C string.
-//!     --zarg STR    `bof_pack "z"` - `[u32 length LE][bytes][NUL]`.
-//!     --iarg N      `bof_pack "i"` - `[u32 BE]` (network byte order).
-//!     --sarg N      `bof_pack "s"` - `[u16 BE]`.
-//!     --barg @FILE  `bof_pack "b"` - `[u32 length LE][bytes]`.
+//! ```text
+//! --args RAW    raw bytes, no length prefix. For BOFs that
+//!               treat `args` as a C string.
+//! --zarg STR    `bof_pack "z"` - `[u32 length LE][bytes][NUL]`.
+//! --iarg N      `bof_pack "i"` - `[u32 BE]` (network byte order).
+//! --sarg N      `bof_pack "s"` - `[u16 BE]`.
+//! --barg @FILE  `bof_pack "b"` - `[u32 length LE][bytes]`.
+//! ```
 //!
 //! Order on the input list determines order in the output buffer -
 //! the BOF reads with `BeaconDataExtract` / `BeaconDataInt` etc. in
