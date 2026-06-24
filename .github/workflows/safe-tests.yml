@@ -1,0 +1,41 @@
+name: Safe Entropia Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  safe-compiler-smoke:
+    name: Safe compiler smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+          python3 --version
+
+      - name: Cargo fmt check
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Safe compiler smoke tests
+        run: python3 tools/safe_entropia_smoke_tests.py --release --timeout 180
+
+      - name: Upload safe test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entropia-safe-test-results
+          path: target/entropia-safe-tests/results.json
