@@ -923,6 +923,54 @@ mod compiler_gauntlet_tests {
         .expect("test source should compile")
     }
 
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    unsafe fn run_shellcode_i64(code: &[u8]) -> i64 {
+        use std::ffi::c_void;
+
+        const PROT_READ: i32 = 1;
+        const PROT_WRITE: i32 = 2;
+        const PROT_EXEC: i32 = 4;
+        const MAP_PRIVATE: i32 = 0x02;
+        const MAP_ANON: i32 = 0x20;
+
+        extern "C" {
+            fn mmap(
+                addr: *mut c_void,
+                len: usize,
+                prot: i32,
+                flags: i32,
+                fd: i32,
+                off: i64,
+            ) -> *mut c_void;
+            fn munmap(addr: *mut c_void, len: usize) -> i32;
+        }
+
+        assert!(!code.is_empty(), "shellcode should not be empty");
+        let len = (code.len() + 4095) & !4095;
+        let mem = mmap(
+            std::ptr::null_mut(),
+            len,
+            PROT_READ | PROT_WRITE | PROT_EXEC,
+            MAP_PRIVATE | MAP_ANON,
+            -1,
+            0,
+        );
+        assert_ne!(mem as isize, -1, "mmap should allocate executable memory");
+        std::ptr::copy_nonoverlapping(code.as_ptr(), mem as *mut u8, code.len());
+
+        let entry: extern "win64" fn() -> i64 = std::mem::transmute(mem);
+        let result = entry();
+        let rc = munmap(mem, len);
+        assert_eq!(rc, 0, "munmap should release executable memory");
+        result
+    }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    fn compile_and_run_shellcode(name: &str, src: &str) -> i64 {
+        let blob = compile_test_source(name, src, codegen::BuildKind::Standard);
+        unsafe { run_shellcode_i64(&blob.code) }
+    }
+
     #[test]
     fn crimson_cloak_parses_core_language_shapes() {
         let prog = parse_source(
@@ -1052,5 +1100,86 @@ fn go(args: char*, len: int) -> void {
         let sections = u16::from_le_bytes([blob.code[2], blob.code[3]]);
         assert_eq!(machine, coff::IMAGE_FILE_MACHINE_AMD64);
         assert!(sections >= 1, "COFF object should include at least one section");
+    }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_minimal_execution_returns_42() {
+        let result = compile_and_run_shellcode(
+            "runtime_ret_42",
+            r#"
+fn main() -> int {
+    ret 42;
+}
+"#,
+        );
+
+        assert_eq!(result, 42);
+    }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_loop_million_returns_count() {
+        let result = compile_and_run_shellcode(
+            "runtime_loop_million",
+            r#"
+fn main() -> int {
+    var i: int = 0;
+    while i < 1000000 {
+        i = i + 1;
+    }
+    ret i;
+}
+"#,
+        );
+
+        assert_eq!(result, 1_000_000);
+    }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_stack_depth_recursive_factorial() {
+        let result = compile_and_run_shellcode(
+            "runtime_factorial",
+            r#"
+fn fact(n: int) -> int {
+    if n <= 1 {
+        ret 1;
+    }
+    ret n * fact(n - 1);
+}
+
+fn main() -> int {
+    ret fact(6);
+}
+"#,
+        );
+
+        assert_eq!(result, 720);
+    }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_pointer_arithmetic_lands_on_expected_byte() {
+        let result = compile_and_run_shellcode(
+            "runtime_pointer_arithmetic",
+            r#"
+fn main() -> int {
+    var buf: u8[8];
+    buf[0] = (u8)10;
+    buf[1] = (u8)20;
+    buf[2] = (u8)30;
+    buf[3] = (u8)40;
+    buf[4] = (u8)50;
+    buf[5] = (u8)60;
+    var p: u8* = (u8*)buf;
+    p = p + 5;
+    p = p - 2;
+    ret (int)*p;
+}
+"#,
+        );
+
+        assert_eq!(result, 40);
     }
 }

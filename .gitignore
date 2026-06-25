@@ -19,6 +19,8 @@ example/*.cna
 build/
 out/
 docs/
+!docs/
+!docs/testing-handoff.md
 
 tools/vscode-entropykit/*.vsix
 tools/vscode-entropykit/node_modules/
