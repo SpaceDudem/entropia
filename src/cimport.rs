@@ -308,6 +308,7 @@ impl<'a> CParser<'a> {
             ))),
         };
         self.out.statics.push(StaticDecl {
+            attrs: vec![],
             name,
             ty: "u32".to_string(),
             init: Some(Expr::Int(val)),

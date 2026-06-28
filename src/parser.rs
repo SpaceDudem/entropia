@@ -348,7 +348,7 @@ impl Parser {
             None
         };
         self.expect(&Tok::Semi, "`;`")?;
-        Ok(StaticDecl { name, ty, init })
+        Ok(StaticDecl { name, ty, init, attrs: vec![] })
     }
 
     fn parse_struct(&mut self) -> Result<StructDef, String> {

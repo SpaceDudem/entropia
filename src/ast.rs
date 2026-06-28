@@ -109,6 +109,9 @@ pub struct StaticDecl {
     pub name: String,
     pub ty:   String,
     pub init: Option<Expr>,
+    /// Attribute tags set by tooling (e.g. [AutoInclude] for
+    /// stdlib/win32 auto-include). Not parsed from source.
+    pub attrs: Vec<Attr>,
 }
 
 #[derive(Debug, Clone)]

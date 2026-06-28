@@ -20,6 +20,7 @@ mod resolver;
 mod shared;
 mod veh;
 mod typecheck;
+mod overflow;
 
 const SRC_EXT: &str = ".etpy";
 
@@ -108,6 +109,10 @@ fn compile(
     if let Err(errs) = typecheck::check_with_kind(&prog, kind) {
         return Err(errs.join("\n\n"));
     }
+    if let Err(errs) = overflow::check(&prog) {
+        return Err(errs.join("\n\n"));
+    }
+
     dce::eliminate_with_kind(&mut prog, kind);
 
     let cna_script = build_cna_script(&prog, path);
@@ -547,8 +552,9 @@ fn auto_include_win32_constants(
                 prog.structs.push(s);
             }
         }
-        for s in imported.statics {
+        for mut s in imported.statics {
             if existing_static_names.insert(s.name.clone()) {
+                s.attrs.push(crate::ast::Attr { kind: "AutoInclude".into(), arg: None });
                 prog.statics.push(s);
             }
         }
