@@ -1,0 +1,16 @@
+model = "ornith"
+model_provider = "ornith-local"
+sandbox_permissions = ["disk-full-read-access", "network-full-access"]
+ask_for_approval = "never"
+sandbox_mode = "danger-full-access"
+
+[model_providers.ornith-local]
+name = "Ornith local vLLM"
+base_url = "http://127.0.0.1:8000/v1"
+wire_api = "responses"
+
+[projects."/workspace"]
+trust_level = "trusted"
+
+[features]
+memories = true

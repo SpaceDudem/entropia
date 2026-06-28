@@ -1,0 +1,21 @@
+# =============================================================================
+# vLLM environment — Ornith-1.0-35B-BF16
+# Edit values for your hardware tier. See README for tier configs.
+# =============================================================================
+
+export MODEL_ID='AEON-7/Ornith-1.0-35B-AEON-Ultimate-Uncensored-BF16'
+export SERVED_MODEL_NAME='ornith'
+export HOST='0.0.0.0'
+export PORT='8000'
+
+# --- Hardware-dependent settings (see README for your tier) ---
+export MAX_MODEL_LEN='262144'           # context window tokens
+export GPU_MEMORY_UTILIZATION='0.92'    # fraction of VRAM to allocate
+export MAX_NUM_BATCHED_TOKENS='262144'  # should match MAX_MODEL_LEN
+export TENSOR_PARALLEL_SIZE='1'         # number of GPUs
+
+# --- Cache paths ---
+export HF_HOME='/workspace/ornith-vllm/hf'
+export HF_HUB_CACHE='/workspace/ornith-vllm/hf/hub'
+export HUGGINGFACE_HUB_CACHE='/workspace/ornith-vllm/hf/hub'
+export HF_HUB_ENABLE_HF_TRANSFER=1
