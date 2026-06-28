@@ -1428,4 +1428,65 @@ fn main() -> int {
         );
         assert!(errs.is_empty(), "int = 100+50 is valid, got: {errs:#?}");
     }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_asm_read_local_via_register() {
+        let result = compile_and_run_shellcode(
+            "runtime_asm_read",
+            r#"
+fn main() -> int {
+    var a: int = 73;
+    asm {
+        mov rax, a
+    }
+    ret a;
+}
+"#,
+        );
+        assert_eq!(result, 73);
+    }
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_asm_write_local_via_register() {
+        let result = compile_and_run_shellcode(
+            "runtime_asm_write",
+            r#"
+fn main() -> int {
+    var a: int = 100;
+    asm {
+        mov rax, 200
+        mov a, rax
+    }
+    ret a;
+}
+"#,
+        );
+        assert_eq!(result, 200);
+    }
+
+
+    #[cfg(all(unix, target_arch = "x86_64"))]
+    #[test]
+    fn runtime_asm_compound_bytes_inline() {
+        // Verify db directives emit the correct bytes into the text section.
+        // We don't execute this shellcode: the inline `ret` fires before the
+        // compiler's epilogue restores rsp, which segfaults on Linux.
+        // Byte-level assertion is sufficient to prove the asm block works.
+        let blob = compile_test_source("runtime_asm_db", r#"
+fn main() -> int {
+    asm {
+        db 0x48, 0xB8, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        db 0xC3
+    }
+    ret 0;
+}
+"#, codegen::BuildKind::Standard);
+        // mov rax, 90 = 48 B8 5A 00 00 00 00 00 00 00
+        let expected = [0x48u8, 0xB8, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC3];
+        let found = blob.code.windows(expected.len()).any(|w| w == expected);
+        assert!(found, "inline asm db bytes not found in output: {:02x?}", &blob.code);
+    }
+
 }
