@@ -3207,7 +3207,7 @@ impl CodeGen {
     }
 }
 
-fn literal_int_value(e: &Expr) -> Option<i64> {
+fn literal_int_value(e: &Expr) -> Option<i128> {
     match e {
         Expr::Int(n) => Some(*n),
         Expr::Unary { op, operand } if op == "-" => {
@@ -3218,14 +3218,14 @@ fn literal_int_value(e: &Expr) -> Option<i64> {
     }
 }
 
-fn narrow_int_literal(ty: &str, n: i64) -> Option<i64> {
+fn narrow_int_literal(ty: &str, n: i128) -> Option<i128> {
     match ty {
-        "u8"  => Some((n as u8)  as i64),
-        "u16" => Some((n as u16) as i64),
-        "u32" => Some((n as u32) as i64),
-        "i8"  => Some((n as i8)  as i64),
-        "i16" => Some((n as i16) as i64),
-        "i32" => Some((n as i32) as i64),
+        "u8"  => Some((n as u8)  as i128),
+        "u16" => Some((n as u16) as i128),
+        "u32" => Some((n as u32) as i128),
+        "i8"  => Some((n as i8)  as i128),
+        "i16" => Some((n as i16) as i128),
+        "i32" => Some((n as i32) as i128),
         // u64/i64/int are full-width; no narrowing needed. Skip the fold so
         // the regular gen_expr path runs.
         _ => None,

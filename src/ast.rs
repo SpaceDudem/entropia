@@ -20,7 +20,7 @@ impl std::fmt::Display for Span {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Int(i64),
+    Int(i128),
     Str(String),
     Bool(bool),
     Var(String),
@@ -133,5 +133,5 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
     pub name:     String,
-    pub variants: Vec<(String, i64)>,
+    pub variants: Vec<(String, i128)>,
 }

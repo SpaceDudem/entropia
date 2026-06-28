@@ -210,20 +210,20 @@ fn resolve_enum_accesses(prog: &mut ast::Program) -> Result<(), String> {
 
     if prog.enums.is_empty() { return Ok(()); }
 
-    let mut variants: std::collections::HashMap<(String, String), i64> =
+    let mut variants: std::collections::HashMap<(String, String), i128> =
         std::collections::HashMap::new();
     let mut enum_names: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for e in &prog.enums {
         enum_names.insert(e.name.clone());
         for (vname, value) in &e.variants {
-            variants.insert((e.name.clone(), vname.clone()), *value);
+            variants.insert((e.name.clone(), vname.clone()), *value as i128);
         }
     }
 
     fn rewrite_expr(
         e: &mut Expr,
-        variants: &std::collections::HashMap<(String, String), i64>,
+        variants: &std::collections::HashMap<(String, String), i128>,
         enums: &std::collections::HashSet<String>,
     ) -> Result<(), String> {
         match e {
@@ -236,7 +236,7 @@ fn resolve_enum_accesses(prog: &mut ast::Program) -> Result<(), String> {
                         let value = variants.get(&key).ok_or_else(|| format!(
                             "enum `{name}` has no variant `{field}`"
                         ))?;
-                        *e = Expr::Int(*value);
+                        *e = Expr::Int(*value as i128);
                         return Ok(());
                     }
                 }
@@ -279,7 +279,7 @@ fn resolve_enum_accesses(prog: &mut ast::Program) -> Result<(), String> {
 
     fn rewrite_stmt(
         s: &mut Stmt,
-        variants: &std::collections::HashMap<(String, String), i64>,
+        variants: &std::collections::HashMap<(String, String), i128>,
         enums: &std::collections::HashSet<String>,
     ) -> Result<(), String> {
         match s {
@@ -1187,5 +1187,245 @@ fn main() -> int {
         );
 
         assert_eq!(result, 40);
+    }
+
+
+    // ----------------------------------------------------------------
+    // Overflow detection pass — unit tests against parse + overflow::check.
+    // Each test either asserts that exactly the expected errors fire
+    // (or none), so we can catch regressions in the type-range rules.
+    // ----------------------------------------------------------------
+
+    fn overflow_errors(src: &str) -> Vec<String> {
+        let prog = parse_source(src);
+        match overflow::check(&prog) {
+            Ok(()) => Vec::new(),
+            Err(errs) => errs,
+        }
+    }
+
+    // ---- Literal overflows — values that don't fit the declared type ----
+
+    #[test]
+    fn literal_overflow_u8_256_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u8 = 256; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u8")),
+            "u8 = 256 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn literal_overflow_i8_positive_128_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = 128; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("i8")),
+            "i8 = 128 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn literal_overflow_u32_4294967296_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u32 = 4294967296; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u32")),
+            "u32 = 4294967296 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn literal_overflow_u16_65536_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u16 = 65536; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u16")),
+            "u16 = 65536 should fire T030, got: {errs:#?}");
+    }
+
+    // ---- Arithmetic overflows — result exceeds declared type ----
+
+    #[test]
+    fn arithmetic_overflow_i8_100_plus_50_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = 100 + 50; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("i8")),
+            "i8 = 100+50 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn arithmetic_overflow_u8_200_plus_100_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u8 = 200 + 100; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u8")),
+            "u8 = 200+100 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn arithmetic_overflow_i16_32000_plus_1000_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i16 = 32000 + 1000; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("i16")),
+            "i16 = 32000+1000 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn arithmetic_overflow_u16_65535_plus_1_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u16 = 65535 + 1; ret a; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u16")),
+            "u16 = 65535+1 should fire T030, got: {errs:#?}");
+    }
+
+    // ---- Cast overflows — value doesn't fit the cast target type ----
+
+    #[test]
+    fn cast_overflow_u8_300_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { ret (u8)300; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u8")),
+            "(u8)300 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn cast_overflow_i8_200_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { ret (i8)200; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("i8")),
+            "(i8)200 should fire T030, got: {errs:#?}");
+    }
+
+    #[test]
+    fn cast_overflow_u16_70000_fires() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { ret (u16)70000; }"#,
+        );
+        assert!(errs.iter().any(|e| e.contains("T030") && e.contains("u16")),
+            "(u16)70000 should fire T030, got: {errs:#?}");
+    }
+
+    // ---- Negation overflow — unary result is *not* checked (known gap) ----
+
+    #[test]
+    fn negation_overflow_i8_min_fires() {
+        // -(i8::MIN) = -(-128) = 128, which exceeds i8::MAX (127). The
+        // overflow pass now checks the result of unary negation against
+        // both the operand's declared type and the expression's expected
+        // type — so 128 overflow i8 fires T030.
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = -128; ret -a; }"#,
+        );
+        assert!(
+            errs.iter().any(|e| e.contains("error[T030]")),
+            "negating i8::MIN should fire T030, got: {errs:#?}"
+        );
+    }
+
+    #[test]
+    fn negation_literal_129_fires_overflow() {
+        // -129 parsed as Unary("-", Int(129)); unary negation yields -129
+        // which does not fit i8::MIN..i8::MAX [-128..127]. The overflow
+        // pass now validates the result of unary negation.
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = -129; ret a; }"#,
+        );
+        assert!(
+            errs.iter().any(|e| e.contains("error[T030]")),
+            "unary negation of 129 should fire T030, got: {errs:#?}"
+        );
+    }
+
+    // ---- Valid values — nothing should error ----
+
+    #[test]
+    fn valid_u8_255_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u8 = 255; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "u8 = 255 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_i8_127_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = 127; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "i8 = 127 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_i8_min_128_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = -128; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "i8 = -128 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_u32_4294967295_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u32 = 4294967295; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "u32 = 4294967295 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_u64_hex_max_no_error() {
+        // Hex path parses as full u64 then casts to i64; the value
+        // 0x7FFFFFFFFFFFFFFF = i64::MAX = 9223372036854775807 fits u64.
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u64 = 0x7FFFFFFFFFFFFFFF; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "u64 hex MAX is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_u64_decimal_max_no_error() {
+        // Decimal integer parsing now uses u128 internally, so u64::MAX
+        // (18446744073709551615) can be written in decimal without
+        // overflowing the lexer. The overflow pass sees the literal
+        // value and confirms it fits u64's range.
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: u64 = 18446744073709551615; ret a; }"#,
+        );
+        assert!(errs.is_empty(),
+            "u64::MAX written in decimal is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_cast_u8_0_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { ret (u8)0; }"#,
+        );
+        assert!(errs.is_empty(), "(u8)0 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_cast_i32_42_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { ret (i32)42; }"#,
+        );
+        assert!(errs.is_empty(), "(i32)42 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_arithmetic_i8_1_plus_1_no_error() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: i8 = 1 + 1; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "i8 = 1+1 is valid, got: {errs:#?}");
+    }
+
+    #[test]
+    fn valid_arithmetic_int_no_overflow() {
+        let errs = overflow_errors(
+            r#"fn main() -> int { var a: int = 100 + 50; ret a; }"#,
+        );
+        assert!(errs.is_empty(), "int = 100+50 is valid, got: {errs:#?}");
     }
 }

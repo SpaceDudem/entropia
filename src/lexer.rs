@@ -5,7 +5,7 @@
 pub enum Tok {
     // literals
     Ident(String),
-    Int(i64),
+    Int(i128),
     Str(String),
 
     // keywords
@@ -125,7 +125,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 }
                 let raw = std::str::from_utf8(&bytes[hex_start..i]).unwrap();
                 // Use u64 parse then cast - allows full 64-bit range.
-                let v = u64::from_str_radix(raw, 16).map_err(|e| e.to_string())? as i64;
+                let v = u128::from_str_radix(raw, 16).map_err(|e| e.to_string())? as i128;
                 out.push(Token { kind: Tok::Int(v), line: sl, col: sc });
                 continue;
             }
@@ -133,7 +133,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 bump(&mut i, &mut line, &mut col, 1, bytes);
             }
             let raw = std::str::from_utf8(&bytes[start..i]).unwrap();
-            let v: i64 = raw.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+            let v: i128 = u128::from_str_radix(raw, 10).map_err(|e| e.to_string())? as i128;
             out.push(Token { kind: Tok::Int(v), line: sl, col: sc });
             continue;
         }

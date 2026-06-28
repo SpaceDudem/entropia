@@ -311,7 +311,7 @@ impl<'a> CParser<'a> {
             attrs: vec![],
             name,
             ty: "u32".to_string(),
-            init: Some(Expr::Int(val)),
+            init: Some(Expr::Int(val as i128)),
         });
         Ok(())
     }

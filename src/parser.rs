@@ -371,8 +371,8 @@ impl Parser {
         self.expect(&Tok::Enum, "`enum`")?;
         let name = self.eat_ident()?;
         self.expect(&Tok::LBrace, "`{`")?;
-        let mut variants: Vec<(String, i64)> = Vec::new();
-        let mut next_value: i64 = 0;
+        let mut variants: Vec<(String, i128)> = Vec::new();
+        let mut next_value: i128 = 0;
         while !self.check(&Tok::RBrace) {
             let vname = self.eat_ident()?;
             let value = if self.matches(&Tok::Assign) {

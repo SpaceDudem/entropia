@@ -41,7 +41,7 @@ pub fn check_with_kind(prog: &Program, _kind: BuildKind) -> Vec<String> {
 #[allow(dead_code)]
 struct TypedVal {
     ty:     String,
-    value:  Option<i64>,
+    value:  Option<i128>,
 }
 
 #[allow(dead_code)]
@@ -49,7 +49,7 @@ impl TypedVal {
     fn new(ty: impl Into<String>) -> Self {
         Self { ty: ty.into(), value: None }
     }
-    fn with(ty: impl Into<String>, v: i64) -> Self {
+    fn with(ty: impl Into<String>, v: i128) -> Self {
         Self { ty: ty.into(), value: Some(v) }
     }
 }
@@ -71,7 +71,7 @@ impl OverflowScope {
         self.locals.insert(name, TypedVal::new(ty));
     }
 
-    fn record(&mut self, name: String, v: i64) {
+    fn record(&mut self, name: String, v: i128) {
         if let Some(tv) = self.locals.get_mut(&name) {
             tv.value = Some(v);
         }
@@ -278,7 +278,7 @@ fn expr_type(e: &Expr) -> String {
 }
 
 /// Extract a concrete integer value from an expression, if known.
-fn expr_value(e: &Expr) -> Option<i64> {
+fn expr_value(e: &Expr) -> Option<i128> {
     match e {
         Expr::Int(n) => Some(*n),
         Expr::Bool(true) => Some(1),
@@ -334,14 +334,14 @@ fn expr_value(e: &Expr) -> Option<i64> {
             // For casts, apply the target type's mask to the value.
             let v = expr_value(expr)?;
             Some(match ty.as_str() {
-                "i8" => v as i8 as i64,
-                "i16" => v as i16 as i64,
-                "i32" => v as i32 as i64,
+                "i8" => v as i8 as i128,
+                "i16" => v as i16 as i128,
+                "i32" => v as i32 as i128,
                 "i64" => v,
-                "u8" => v as u8 as i64,
-                "u16" => v as u16 as i64,
-                "u32" => v as u32 as i64,
-                "u64" => v as u64 as i64,
+                "u8" => v as u8 as i128,
+                "u16" => v as u16 as i128,
+                "u32" => v as u32 as i128,
+                "u64" => v as u64 as i128,
                 "int" => v,
                 _ => v,
             })
@@ -371,7 +371,7 @@ fn type_range(ty: &str) -> (i128, i128) {
 
 
 /// Check whether a concrete value fits the range of a given type.
-fn value_fits(value: i64, ty: &str) -> bool {
+fn value_fits(value: i128, ty: &str) -> bool {
     let (lo, hi) = type_range(ty);
     let v = value as i128;
     v >= lo && v <= hi
@@ -381,7 +381,7 @@ fn value_fits(value: i64, ty: &str) -> bool {
 fn emit_overflow(
     context: &str,
     ty: &str,
-    value: i64,
+    value: i128,
     _span: Span,
     errs: &mut Vec<String>,
 ) {
@@ -395,7 +395,7 @@ fn emit_overflow(
 /// Check a literal value against its declared type. Used for Var/Static
 /// initializers and Cast expressions.
 fn check_value_overflow(
-    value: i64,
+    value: i128,
     ty: &str,
     context: &str,
     span: Span,
@@ -431,7 +431,7 @@ fn check_op_overflow(
     // If any child is a literal, we can compute the result directly.
     // If a child is a variable, we look up its type from the scope.
     let mut operand_types: Vec<String> = Vec::new();
-    let mut operand_values: Vec<Option<i64>> = Vec::new();
+    let mut operand_values: Vec<Option<i128>> = Vec::new();
 
     for child in children {
         let e_ty = expr_type(child);
@@ -471,6 +471,23 @@ fn check_op_overflow(
             }
         }
     }
+
+    // For unary ops, compute the result and check overflow against both
+    // the operand's type (the value the unary is applied to) and the
+    // broader expected type (where the result is being placed).
+    if children.len() == 1 {
+        if let Some(val) = operand_values[0] {
+            let res = if op == "-" {
+                Some(-val)
+            } else {
+                compute_result(op, val, 0)
+            };
+            if let Some(res) = res {
+                check_value_overflow(res, &operand_types[0], context, span, errs);
+                check_value_overflow(res, expected_ty, context, span, errs);
+            }
+        }
+    }
 }
 
 /// Determine whether an operator is arithmetic (and thus needs overflow check).
@@ -483,7 +500,7 @@ fn is_arithmetic_op(op: &str) -> bool {
 
 /// Compute the result of an arithmetic operator on two integer values.
 /// Returns None if the operation is undefined (e.g., division by zero).
-fn compute_result(op: &str, lv: i64, rv: i64) -> Option<i64> {
+fn compute_result(op: &str, lv: i128, rv: i128) -> Option<i128> {
     match op {
         "+" => Some(lv.wrapping_add(rv)),
         "-" => Some(lv.wrapping_sub(rv)),
