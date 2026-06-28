@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: Apache-2.0
+// seatbelt_tokenpriv.etpy - port of Seatbelt's TokenPrivileges check.
+//
+// Calls OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY), then
+// GetTokenInformation with TokenPrivileges class, then iterates each
+// privilege entry and prints its name (via LookupPrivilegeNameA) plus
+// enabled/disabled state via BeaconPrintf.
+//
+// Build: entc compile --type=bof seatbelt_tokenpriv.etpy
+// Run:   bof-runner seatbelt_tokenpriv.obj
+//        (no args — enumerates the current process's primary token)
+
+use bof;
+
+extern fn GetCurrentProcess() -> void*;
+extern fn OpenProcessToken(h: void*, desired: int, hToken: int*) -> int;
+extern fn GetTokenInformation(h: void*, class_: int, info: void*, size: int, needed: int*) -> int;
+extern fn LookupPrivilegeNameA(server: void*, luid: void*, name: char*, name_len: int*) -> int;
+extern fn LocalAlloc(flags: int, size: int) -> void*;
+extern fn CloseHandle(h: void*) -> void*;
+
+[Override(Bootstrap)]
+fn _bootstrap(args: char*, len: int) -> void {
+    var h_token: u64 = 0;
+    var h_process: u64 = 0;
+    var privs: u64 = 0;
+    var privs_size: int = 0;
+    var needed: int = 0;
+    var ok: int = 0;
+    var name_buf: char[256];
+    var name_len: int = 256;
+    var enabled: int = 0;
+    var i: int = 0;
+    
+    // Step 1: open our own process's primary token for querying.
+    h_process = (u64)GetCurrentProcess();
+    ok = OpenProcessToken(
+        (void*)h_process,
+        0x0008,  // TOKEN_QUERY
+        (int*)&h_token);
+    if ok == 0 || h_token == 0 {
+        BeaconPrintf(0, "[!] OpenProcessToken failed\n");
+        ret;
+    }
+    
+    // Step 2: query the size needed for TokenPrivileges.
+    ok = GetTokenInformation(
+        (void*)h_token,
+        3,       // TokenPrivileges
+        0,
+        0,
+        (int*)&needed);
+    if ok == 0 && needed == 0 {
+        BeaconPrintf(0, "[!] GetTokenInformation returned failure with no size\n");
+        ret;
+    }
+    if ok == 0 {
+        privs = (u64)LocalAlloc(0x40, (int)needed);  // LMEM_FIXED | LMEM_ZEROINIT
+        if privs == 0 {
+            BeaconPrintf(0, "[!] LocalAlloc failed for privileges buffer\n");
+            ret;
+        }
+        ok = GetTokenInformation(
+            (void*)h_token,
+            3,
+            (void*)privs,
+            (int)needed,
+            (int*)&privs_size);
+        if ok == 0 {
+            BeaconPrintf(0, "[!] GetTokenInformation (2nd call) failed\n");
+            ret;
+        }
+    }
+    
+    // Step 3: parse the TOKEN_PRIVILEGES struct.
+    var luid_val: u64 = (u64)privs;
+    var attr_count: int = (int)privs;
+    attr_count = (int)(privs + 8);
+    
+    // Step 4: iterate each privilege.
+    var count: int = (int)(privs + 8);
+    var cur: u64 = (u64)privs + 8;
+    
+    BeaconPrintf(0, "[+] Privilege enumeration:\n");
+    BeaconPrintf(0, str.format("    LUID:   0x{x}\n", (u64)(privs + 0)));
+    
+    while i < count {
+        var cur_luid: u64 = (u64)cur;
+        var cur_attr: int = (int)(cur + 8);
+        enabled = *cur_attr;
+        
+        var domain: char[256];
+        var domain_len: int = 256;
+        var ok2: int = LookupPrivilegeNameA(
+            0,
+            (void*)(cur_luid + 0),
+            (char*)&name_buf,
+            (int*)&name_len);
+        if ok2 == 0 {
+            BeaconPrintf(0, str.format("    [{d}] LUID=0x{x} attr={d} (lookup failed)\n",
+                i, (u64)(cur_luid + 0), enabled));
+        } else {
+            var state: char[8];
+            if enabled & 0x2 != 0 {
+                state = "enabled";
+            } else {
+                state = "disabled";
+            }
+            BeaconPrintf(0, str.format("    [{d}] {s} - {s}\n",
+                i, (char*)name_buf, state));
+        }
+        
+        cur = cur + 12;
+        i = i + 1;
+    }
+    
+    CloseHandle((void*)h_token);
+    ret;
+}
+
+fn go(args: char*, len: int) -> void {
+    ret;
+}

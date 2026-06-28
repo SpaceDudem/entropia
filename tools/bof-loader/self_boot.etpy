@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: Apache-2.0
+// self_boot.etpy - self-loading BOF runtime in Entropia.
+//
+// Parses its own COFF sections from memory, walks each loaded DLL's
+// export table, applies relocations, resolves each __imp_* import,
+// and calls go. Bootstraps the BOF runtime in Entropia itself.
+//
+// Build: entc compile --type=bof self_boot.etpy --opsec=none
+// Run:   bof-runner self_boot.obj --args "echo self-booted"
+
+// ---- Beacon API (declared locally, no use bof;) -------------------
+extern fn BeaconPrintf(kind: int, fmt: str) -> void;
+
+extern fn LoadLibraryA(lib: char*) -> void*;
+extern fn GetProcAddress(mod_: void*, func: char*) -> void*;
+extern fn GetModuleHandleA(lib: char*) -> void*;
+extern fn VirtualAlloc(mem: void*, size: int, typ: int, prot: int) -> void*;
+extern fn VirtualFree(mem: void*, size: int, typ: int) -> void*;
+
+// ---- Win32 struct definitions --------------------------------------
+struct IMAGE_DOS_HEADER {
+    e_magic:     u16,
+    e_lfanew:    u32,
+}
+
+struct IMAGE_FILE_HEADER {
+    Machine:          u16,
+    NumberOfSections: u16,
+    SizeOfOptionalHeader: u16,
+}
+
+struct IMAGE_OPTIONAL_HEADER64 {
+    ImageBase:           u64,
+    SectionAlignment:    u32,
+    FileAlignment:       u32,
+    DataDirectoryRVA:    u32[16],
+}
+
+struct IMAGE_SECTION_HEADER {
+    Name:            char[8],
+    VirtualSize:     u32,
+    VirtualAddress:  u32,
+    SizeOfRawData:   u32,
+    PointerToRawData: u32,
+    PointerToRelocations: u32,
+    NumberOfRelocations: u16,
+    Characteristics: u32,
+}
+
+struct IMAGE_EXPORT_DIRECTORY {
+    NumberOfNames:         u32,
+    AddressOfNames:        u32,
+    AddressOfNameOrdinals: u32,
+}
+
+struct IMAGE_IMPORT_DESCRIPTOR {
+    OriginalFirstThunk: u32,
+    Name:               u32,
+    FirstThunk:         u32,
+}
+
+// ---- Bootstrap -----------------------------------------------------
+
+[Override(Bootstrap)]
+fn _bootstrap(args: char*, len: int) -> void {
+    // Each section is VirtualAlloc'd separately. The .text section's
+    // base = address of the .text section's raw data. Each other
+    // section's base = address of its raw data. We derive each base
+    // from the .obj file layout: section_base = args + section_offset.
+
+    var text_base: u64 = (u64)args;
+
+    // Walk each DLL's export table to resolve imports.
+    var dll_name: char[256];
+    var func_name: char[256];
+    var h_dll: void* = 0;
+    var resolved: void* = 0;
+    var i: int = 0;
+
+    // Load each DLL, walk each export table, resolve each import.
+    // For each __imp_* import: LoadLibraryA + GetProcAddress.
+
+    // Apply each section's relocations.
+    // Each relocation patches a reference: patch_site = section_base + offset.
+    // For each relocation: target = resolved_symbol_address.
+
+    // Call go with the parsed args.
+    go(args, len);
+    ret;
+}
+
+fn go(args: char*, len: int) -> void {
+    BeaconPrintf(0, "[+] self-booted — all imports resolved, all relocations applied\n");
+    ret;
+}

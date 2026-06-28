@@ -1,0 +1,36 @@
+{
+  "scan_id": "20260628T184802Z",
+  "canary_domain": "demo.hikscan.local",
+  "results": [
+    {
+      "ip": "127.0.0.1",
+      "port": 80,
+      "http_status": 0,
+      "response_headers": {},
+      "response_body": "",
+      "status": "error",
+      "firmware": "",
+      "rce_payload_sent": "",
+      "rce_time_ms": 0.0,
+      "rce_dns_callback": false
+    },
+    {
+      "ip": "127.0.0.1",
+      "port": 8080,
+      "http_status": 0,
+      "response_headers": {},
+      "response_body": "",
+      "status": "error",
+      "firmware": "",
+      "rce_payload_sent": "",
+      "rce_time_ms": 0.0,
+      "rce_dns_callback": false
+    }
+  ],
+  "summary": {
+    "vulnerable": 0,
+    "patched": 0,
+    "not_hikvision": 0,
+    "total_probed": 2
+  }
+}
